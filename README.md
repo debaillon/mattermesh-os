@@ -3,6 +3,8 @@
 An alternative firmware for the LilyGO **T-Deck Plus** and **T-Deck Max**, built on [MeshCore](https://github.com/meshcore-dev/MeshCore):
 off-grid LoRa chat with a real keyboard, designed for use in the field.
 
+**Website and browser installer: [mattermeshos.com](https://mattermeshos.com)** — install it on your T-Deck from Chrome or Edge, no tools needed.
+
 <table>
 <tr>
 <td align="center"><img src="docs/images/plus-lock.png" width="400" alt="T-Deck Plus lock screen"><br><b>T-Deck Plus</b> · lock screen</td>
