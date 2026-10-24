@@ -17,7 +17,7 @@ constexpr int Touch=28,IconStatus=12,IconRow=24;
 constexpr int StatusTextY=3,StatusIconY=2,StatusClockW=40;
 constexpr int StatusAntennaX=Margin+StatusClockW+5,StatusAntennaY=4,StatusAntennaW=30;
 constexpr int HoldBannerY=StatusH,HoldBannerH=36;
-constexpr int HoldDots=6,HoldDotR=3,HoldDotStep=9,HoldDotsW=HoldDots*HoldDotStep;// hold banner progress dots (2 s hold), right-aligned like the unlock taps
+constexpr int HoldDots=6,HoldDotR=3,HoldDotStep=9,HoldDotsW=HoldDots*HoldDotStep;// dots of the banner cards (unlock taps, input notices)
 constexpr int StatusIconStep=18,StatusIconsX=W-152;
 constexpr int StatusBatteryY=4,StatusBatteryW=14,StatusBatteryH=9;
 constexpr int StatusRightMargin=Margin,StatusBatteryGap=5,StatusIndicatorGap=4;
@@ -49,7 +49,7 @@ constexpr Rect EmojiPopup={Margin,ComposerY-198,W-2*Margin,196};
 constexpr Rect emojiTabRect(int index){return {EmojiPopup.x+4+index*36,EmojiPopup.y+4,34,26};}
 constexpr Rect emojiChoiceRect(int index){return {EmojiPopup.x+4+(index%6)*36,EmojiPopup.y+34+(index/6)*36,34,34};}
 constexpr Rect ChatMenu={W-32,StatusH,32,HeaderH};
-constexpr int SettingsCount=16,SettingsRowH=36,SettingsDeviceFirst=5,SettingsSystemFirst=10;
+constexpr int SettingsCount=17,SettingsRowH=36,SettingsDeviceFirst=5,SettingsSystemFirst=11;
 constexpr int SettingsGpsIndex=4;
 // Settings scroll by whole rows: scroll = first visible row, its group label above it
 // when it opens a group. Rows outside the viewport get a y off screen and are not drawn.
@@ -81,7 +81,6 @@ inline int settingsMaxScroll(){int first=0;while(!settingsVisible(SettingsCount-
 inline int settingsPage(int scroll,bool down){if(down)return std::min(settingsMaxScroll(),settingsLastVisible(scroll)+1);int first=scroll;while(first>0&&settingsLastVisible(first-1)>=scroll-1)first--;return first;}
 // Lights / vibration: three label + slider rows, then the message / mention vibration pattern rows.
 constexpr int ControlFirstY=Top+10,ControlStep=58;
-inline Rect controlButton(int row,bool plus){return {plus?W/2+Gap/2:Margin,ControlFirstY+row*ControlStep+18,(W-2*Margin-Gap)/2,28};}
 constexpr int HapticY=ControlFirstY+ControlStep*2;
 constexpr Rect lightSliderRect(int row){return {Margin,ControlFirstY+row*ControlStep+18,W-2*Margin,28};}
 constexpr Rect HapticSlider={Margin,HapticY+18,W-2*Margin,28};
@@ -90,8 +89,6 @@ constexpr int HapticTrackX=Margin+8,HapticTrackW=W-2*Margin-16;
 inline int stepRowTap(Rect r,int x){return x>=r.x+r.w-56&&x<r.x+r.w-26?-1:1;}
 constexpr Rect VibrationMessage={Margin,HapticY+70,W-2*Margin,32},VibrationMention={Margin,HapticY+104,W-2*Margin,32};
 constexpr Rect lightToggleRect(int row){return {W-62,ControlFirstY+row*ControlStep-4,54,22};}
-constexpr int RadioAntennaY=Top+126;
-inline Rect radioAntennaRect(int index){return {Margin+index*((W-2*Margin-Gap)/2+Gap),RadioAntennaY,(W-2*Margin-Gap)/2,30};}
 constexpr Rect RadioAdvert={Margin,Top+202,W-2*Margin,28};
 constexpr Rect BackButton={0,StatusH,32,HeaderH};
 constexpr Rect ComposeButton={W-32,StatusH,32,HeaderH};
@@ -167,6 +164,12 @@ constexpr Rect LoRaRadio={W-Margin-2*LoRaTabW-LoRaTabGap,LoRaTabY,LoRaTabW,LoRaT
 constexpr int ContactTabCount=3,ContactTabGap=2;constexpr int ContactTabWidths[ContactTabCount]={46,62,46};
 inline Rect contactTabRect(int i){int x=W-Margin-Radius;for(int t=ContactTabCount-1;t>=i;t--)x-=ContactTabWidths[t]+(t==ContactTabCount-1?0:ContactTabGap);return {x,LoRaTabY,ContactTabWidths[i],LoRaTabH};}
 constexpr Rect ContactSearch={LoRaInset,Top+6,LoRaContentW,26};
+// Settings > Keyboard languages: search, KeyboardRows language rows with a switch (toggleRow needs 40 px for its two
+// lines), help under the list: up to 7 lines, enough for the two-line how-to plus the longest accent help.
+constexpr int KeyboardSection=12,KeyboardRows=3,KeyboardRowH=40;
+constexpr Rect KeyboardSearch={LoRaInset,Top+6,LoRaContentW,26};
+inline Rect keyboardRowRect(int i){return {Margin,Top+38+i*(KeyboardRowH+2),W-2*Margin,KeyboardRowH};}
+constexpr int KeyboardHelpY=Top+40+KeyboardRows*(KeyboardRowH+2);
 constexpr int ContactRows=4,ContactRowH=44,ContactRowY=Top+38,ContactNoticeY=Bottom-46;
 inline Rect contactRowRect(int i){return {LoRaInset,ContactRowY+i*ContactRowH,LoRaContentW,ContactRowH-3};}
 constexpr Rect ContactPrevious={LoRaInset,Bottom-28,40,22},ContactNext={W-LoRaInset-40,Bottom-28,40,22};

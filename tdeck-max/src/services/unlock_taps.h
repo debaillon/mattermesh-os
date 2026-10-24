@@ -29,5 +29,4 @@ struct UnlockTaps {
  bool active()const{return down||taps>0;}
  void reset(){down=completed=false;taps=0;started=lastRelease=0;}
 };
-inline bool unlockOpensChat(int latestChat,int chatCount,int unread){return latestChat>=0&&latestChat<chatCount&&unread>0;}
 }

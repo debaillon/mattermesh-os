@@ -55,7 +55,17 @@ void Components::emoji(uint32_t cp,int x,int y,int size,uint16_t color){auto spr
  if(size==14){g.drawBitmap(x,y,sprite->pixels,14,14,color);return;}// native size: same 2-byte MSB-first rows, no per-pixel scaling
  for(int yy=0;yy<size;yy++)for(int xx=0;xx<size;xx++){int sx=xx*14/size,sy=yy*14/size;if(sprite->pixels[sy*2+sx/8]&(128>>(sx%8)))g.drawPixel(x+xx,y+yy,color);}}
 static int degreeRadius(Font f){return std::max(2,Components::ascent(f)/5);}
-int Components::unitAdvance(uint32_t cp,Font f){if(invisibleCodepoint(cp))return 0;if(cp==0xb0||cp==0x2070)return degreeRadius(f)*2+3;auto face=font(f);if(cp>=face->first&&cp<=face->last)return face->glyph[cp-face->first].xAdvance;if(char c=latinFold(cp))return face->glyph[uint8_t(c)-face->first].xAdvance;if(cp==0xad)return 0;return std::min(14,lineHeight(f)-1)+2;}
+// Cyrillic (U+0400..U+0491) lives in a second table of the chat fonts (code 32 = U+0400, tools/build_chat_fonts.py);
+// the text faces borrow the chat table of a similar size, so Russian / Ukrainian names and messages never show boxes
+// (the tiny label and clock faces only draw fixed English text and have none).
+constexpr uint32_t CyrFirst=0x400,CyrLast=0x491;
+static const GFXfont *cyrillicFont(Font f){switch(f){
+ case Font::ChatBody:case Font::Body:case Font::Bold:case Font::LockText:return &mm_chat_body::TextCyr;
+ case Font::ChatTitle:case Font::Title:case Font::Brand:return &mm_chat_title::TextCyr;
+ case Font::ChatMeta:case Font::Small:return &mm_chat_meta::TextCyr;
+ default:return nullptr;}}
+static const GFXfont *cyrillicFor(uint32_t cp,Font f){return cp>=CyrFirst&&cp<=CyrLast?cyrillicFont(f):nullptr;}
+int Components::unitAdvance(uint32_t cp,Font f){if(invisibleCodepoint(cp))return 0;if(cp==0xb0||cp==0x2070)return degreeRadius(f)*2+3;auto face=font(f);if(cp>=face->first&&cp<=face->last)return face->glyph[cp-face->first].xAdvance;if(auto cyr=cyrillicFor(cp,f))return cyr->glyph[cp-CyrFirst].xAdvance;if(char c=latinFold(cp))return face->glyph[uint8_t(c)-face->first].xAdvance;if(cp==0xad)return 0;return std::min(14,lineHeight(f)-1)+2;}
 std::string Components::display(const std::string &s){return displayText(s);}
 int Components::width(const std::string &s,Font f){return rawWidth(displayText(s),f);}
 // Width of text already passed through displayText(): fit/lines/inputTail measure prefixes many times and must not repeat that pass.
@@ -95,7 +105,7 @@ std::string Components::inputTail(const std::string &s,int w,Font f){
 }
 // displayText() runs once per call: text() and centered() fit and measure the displayed string itself.
 void Components::text(int x,int y,const std::string &s,Font f,uint16_t color,int maxWidth){auto value=displayText(s);if(maxWidth)value=fitDisplayed(value,maxWidth,f);drawDisplayed(x,y,value,f,color);}
-void Components::drawDisplayed(int x,int y,const std::string &value,Font f,uint16_t color){g.setFont(font(f));g.setTextSize(1);g.setTextWrap(false);g.setTextColor(color);uint32_t cp;for(size_t at=0;at<value.size();){size_t next=unitNext(value,at,cp);if(regionalIndicator(cp)){uint32_t second=0;if(next-at>4)utf8Next(value,at+4,second);flag(x,y,f,cp,second,color);x+=flagAdvance(f,next-at>4);at=next;continue;}at=next;if(invisibleCodepoint(cp))continue;auto face=font(f);if(cp==0xb0||cp==0x2070){int r=degreeRadius(f);g.drawCircle(x+r,y+r,r,color);if(r>=4)g.drawCircle(x+r,y+r,r-1,color);}else if(cp>=face->first&&cp<=face->last){g.setCursor(x,y+ascent(f));g.write(uint8_t(cp));}else if(char c=latinFold(cp)){g.setCursor(x,y+ascent(f));g.write(uint8_t(c));}else if(cp!=0xad)emoji(cp,x,y,std::min(14,lineHeight(f)-1),color);x+=unitAdvance(cp,f);}}
+void Components::drawDisplayed(int x,int y,const std::string &value,Font f,uint16_t color){g.setFont(font(f));g.setTextSize(1);g.setTextWrap(false);g.setTextColor(color);uint32_t cp;for(size_t at=0;at<value.size();){size_t next=unitNext(value,at,cp);if(regionalIndicator(cp)){uint32_t second=0;if(next-at>4)utf8Next(value,at+4,second);flag(x,y,f,cp,second,color);x+=flagAdvance(f,next-at>4);at=next;continue;}at=next;if(invisibleCodepoint(cp))continue;auto face=font(f);if(cp==0xb0||cp==0x2070){int r=degreeRadius(f);g.drawCircle(x+r,y+r,r,color);if(r>=4)g.drawCircle(x+r,y+r,r-1,color);}else if(cp>=face->first&&cp<=face->last){g.setCursor(x,y+ascent(f));g.write(uint8_t(cp));}else if(auto cyr=cyrillicFor(cp,f)){g.setFont(cyr);g.setCursor(x,y+ascent(f));g.write(uint8_t(cp-CyrFirst+32));g.setFont(face);}else if(char c=latinFold(cp)){g.setCursor(x,y+ascent(f));g.write(uint8_t(c));}else if(cp!=0xad)emoji(cp,x,y,std::min(14,lineHeight(f)-1),color);x+=unitAdvance(cp,f);}}
 void Components::centered(int x,int y,int w,const std::string &s,Font f,uint16_t color){auto v=fitDisplayed(displayText(s),w,f);drawDisplayed(x+(w-rawWidth(v,f))/2,y,v,f,color);}
 std::vector<std::string> Components::lines(const std::string &s,int maxW,Font f){
  std::vector<std::string> out;std::string line,word;auto value=displayText(s);g.setTextWrap(false);
@@ -126,7 +136,6 @@ void Components::icon(Icon id,int x,int y,int size,uint16_t color){const uint8_t
  case Icon::Contacts:bmp=size==12?mm_assets::icon_contacts_12:size==16?mm_assets::icon_contacts_16:size==24?mm_assets::icon_contacts_24:mm_assets::icon_contacts_32;break;
  case Icon::Keyboard:bmp=size==12?mm_assets::icon_keyboard_12:size==16?mm_assets::icon_keyboard_16:size==24?mm_assets::icon_keyboard_24:mm_assets::icon_keyboard_32;break;
 
- case Icon::Flashlight:bmp=size==12?mm_assets::icon_flashlight_12:size==16?mm_assets::icon_flashlight_16:size==24?mm_assets::icon_flashlight_24:mm_assets::icon_flashlight_32;break;
  case Icon::Clock:bmp=size==12?mm_assets::icon_clock_12:size==16?mm_assets::icon_clock_16:size==24?mm_assets::icon_clock_24:mm_assets::icon_clock_32;break;
  case Icon::Lock:bmp=size==12?mm_assets::icon_lock_12:size==16?mm_assets::icon_lock_16:size==24?mm_assets::icon_lock_24:mm_assets::icon_lock_32;break;
  case Icon::Power:bmp=size==12?mm_assets::icon_power_12:size==16?mm_assets::icon_power_16:size==24?mm_assets::icon_power_24:mm_assets::icon_power_32;break;
@@ -171,6 +180,7 @@ void Components::statusBar(const Status &s){
  g.fillRect(0,0,W,StatusH,BG);
  text(Margin,StatusTextY,s.clock,Font::ChatBody,FG,StatusClockW);
  text(StatusAntennaX,StatusAntennaY,s.antennaInternal?"INT":"EXT",Font::ChatMeta,FG,StatusAntennaW);
+ if(!s.keyboard.empty())text(StatusAntennaX+StatusAntennaW+2,StatusAntennaY,s.keyboard,Font::ChatMeta,FG,22);// keyboard language (Alt + Space)
  const Icon indicators[]={Icon::Messages,Icon::GPS,Icon::Wifi,Icon::Bluetooth};
  const bool active[]={s.unread>0,s.gps,s.wifi,s.bt};
  int count=0;for(bool on:active)if(on)count++;

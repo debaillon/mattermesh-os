@@ -6,7 +6,7 @@
 #include "mesh/message_limits.h"
 namespace mm {
 enum class WeatherPhaseView {Closed,WifiOff,Connecting,NoNetwork,WaitingClock,Locating,Fetching,Ready,Error};
-enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Antenna,Storage,QuickSettings,Cli,ContactPicker,Support };
+enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Antenna,Storage,QuickSettings,Cli,ContactPicker,Support,Keyboard };
 struct Conversation { std::string name,scope,preview,time="--:--",sender,age="--";bool direct=false;int id=0,unread=0,activity=0; };
 struct Message {std::string sender,time,body,meta;bool mine;std::string path,heard,scope;int hops=-1;uint32_t token=0;int repeaters=-1;Message(std::string s="",std::string t="",std::string b="",std::string m="",bool own=false):sender(s),time(t),body(b),meta(m),mine(own){} };
 struct ContactRow {std::string name,detail;};
@@ -35,7 +35,7 @@ struct State {
  float temperature=0,humidity=0,pressure=0,wind=0,high=0,low=0;int weatherCode=2;double latitude=0,longitude=0,altitude=0;int satellites=0;
  std::string weatherText="No weather data",weatherUpdated,weatherMessage,weatherPlace,weatherSource;
  WeatherPhaseView weatherPhase=WeatherPhaseView::Closed;int weatherNext=0,weatherHours=0;float apparent=0,precipitation=0;int weatherHourCode[4]={};float weatherHourTemp[4]={};std::string weatherHourTime[4];
- uint32_t displayTimeout=30,keyboardTimeout=30;int powerField=0;int wallpaper=0,wallpaperFocus=0;// lock-screen wallpaper (mm_wallpaper::list index) and the focused card on its page
+ uint32_t displayTimeout=30,keyboardTimeout=30;int powerField=0;int wallpaper=0,wallpaperFocus=0;std::string kbdQuery;bool kbdSearching=false;int kbdFocus=0,kbdLang=0;uint32_t kbdMask=1;// lock-screen wallpaper (mm_wallpaper::list index) and the focused card on its page
 bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
 
  std::string meshCoreVersion=MM_MESHCORE_VERSION;
@@ -48,7 +48,7 @@ bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
  std::string otaStatus="Not checked",otaDetail,otaAction="CHECK NOW";/* the server address is never shown */int otaProgress=-1;bool otaConfirm=false;std::string timeSource="Acquiring";uint64_t storageTotal=0,storageUsed=0;
  bool emojiPicker=false;int emojiFocus=0,emojiTab=0;bool composerExpanded=false;/* any draft: the composer grows upward so every line can be proofread */size_t inputCursor=std::string::npos;/* byte offset of the caret in input; npos = end */std::vector<int> emojiRecent;std::string receivedChannel="Mesh messages";
  bool quickSent=false;int receivedHops=-1;
- int lockProgress=0,lockElapsedTenths=0,unread=0;std::string receivedName="No messages",receivedPreview="Waiting for mesh messages",receivedTime="--:--";
+ int unread=0;std::string receivedName="No messages",receivedPreview="Waiting for mesh messages",receivedTime="--:--";
  bool lockHasMessage=false,lockEnd=false,lockHint=false,unlockCounting=false;std::string lockRepeater;
  bool quickReply=false,quickReplyEditable=false;std::string quickSender,quickChannel,quickPreview,quickInput,quickError;
  size_t messageLimit=matter::MESSAGE_MAX_TEXT_BYTES,quickMessageLimit=matter::MESSAGE_MAX_TEXT_BYTES;

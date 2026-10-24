@@ -3,7 +3,8 @@
 Each mm::Font face of the e-paper UI gets an Inter face whose cap height equals that face's ascent, so text keeps
 its layout. Glyph bitmaps hold one 4-bit coverage value per pixel (two pixels per byte, row-major, high nibble
 first); ui/fast_canvas.h blends them over the frame. Text faces cover 32..255 (ASCII and Latin-1: à è é ì ò ù ...),
-clock faces 32..58.
+clock faces 32..58. Text faces also get a Cyrillic table (<Face>Cyr, U+0400..U+0491 for Russian / Ukrainian): GFXfont
+cannot address code points above 255, so its code 32 is U+0400 and Components draws cp as cp-0x400+32.
 Usage: python tools/make_aa_fonts.py
 """
 from pathlib import Path
@@ -41,11 +42,14 @@ def face(weight, cap):
 WIDE_SPACE = {"ChatText": 0.38, "ChatTextSmall": 0.38, "ChatBody": 0.38, "LockText": 0.35}
 
 
-def glyphs(font, last, space_em=0.32):
+CYR_FIRST, CYR_LAST = 0x400, 0x491
+
+
+def glyphs(font, last, space_em=0.32, codes=None):
     bitmap, table = bytearray(), []
-    for code in range(32, last + 1):
+    for code in (codes if codes is not None else range(32, last + 1)):
         ch = chr(code)
-        if 127 <= code < 160 or code == 0xAD:  # C1 controls and the soft hyphen: no ink, no advance
+        if 127 <= code < 160 or code == 0xAD or 0x483 <= code <= 0x489:  # controls, soft hyphen, combining marks: no ink
             table.append((len(bitmap), 0, 0, 0, 0, 0))
             continue
         if code == 0xA0:  # no-break space draws as a space
@@ -91,6 +95,15 @@ for name, weight, cap, line in FACES:
         out.append(f"const GFXglyph {name}Glyphs[] PROGMEM={{" + ",".join("{%d,%d,%d,%d,%d,%d}" % g for g in table) + "};")
     out.append(f"const GFXfont {name} PROGMEM={{(uint8_t*){bname}Bitmap,(GFXglyph*){gname}Glyphs,32,{last},{line}}};")
     names.append(name)
+    if not name.endswith("Clock"):  # Cyrillic table of the same face
+        cbitmap, ctable = glyphs(font, 0, codes=range(CYR_FIRST, CYR_LAST + 1))
+        assert len(cbitmap) < 65536, name
+        cname = name + "Cyr";cbname = bitmaps.setdefault(bytes(cbitmap), cname);cgname = tables.setdefault((cbname, tuple(ctable)), cname)
+        if cbname == cname:
+            out.append(f"const uint8_t {cname}Bitmap[] PROGMEM={{" + ",".join(str(b) for b in cbitmap) + "};")
+        if cgname == cname:
+            out.append(f"const GFXglyph {cname}Glyphs[] PROGMEM={{" + ",".join("{%d,%d,%d,%d,%d,%d}" % g for g in ctable) + "};")
+        out.append(f"const GFXfont {cname} PROGMEM={{(uint8_t*){cbname}Bitmap,(GFXglyph*){cgname}Glyphs,32,{32 + CYR_LAST - CYR_FIRST},{line}}};")
 out.append("}")
 (ROOT / "src/ui/aa_fonts.h").write_text("\n".join(out) + "\n")
 print("faces:", ", ".join(names))

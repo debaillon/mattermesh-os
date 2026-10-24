@@ -15,15 +15,12 @@ CODEPOINTS = json.loads((ROOT / "assets/fonts/mdi/codepoints.json").read_text())
 SIZES = [12, 16, 24, 32]
 # order = enum mm::Icon, then enum mm::PackIcon
 ICONS = [
-    ("Messages", "message-text-outline"), ("Mesh", "hub-outline"), ("Maps", "map-outline"), ("Weather", "weather-partly-cloudy"),
+    ("Messages", "message-text-outline"), ("Mesh", "hub-outline"), ("Weather", "weather-partly-cloudy"),
     ("Radio", "radio-tower"), ("Files", "folder-outline"), ("Terminal", "console"), ("Notes", "note-text-outline"),
     ("Tools", "tools"), ("Settings", "cog-outline"), ("GPS", "crosshairs-gps"), ("Info", "information-outline"),
     ("Battery", "battery-70"), ("Signal", "signal"), ("Wifi", "wifi"), ("Bluetooth", "bluetooth"),
-    ("Contacts", "account-group-outline"), ("Keyboard", "keyboard-outline"), ("Compass", "compass-outline"),
-    ("Flashlight", "flashlight"), ("Clock", "clock-outline"), ("Lock", "lock-outline"), ("Power", "power"),
-    ("Back", "chevron-left"), ("Search", "magnify"), ("Compose", "pencil-outline"), ("Menu", "menu"), ("Send", "send"),
-    ("Plus", "plus"), ("ChevronRight", "chevron-right"), ("ChevronDown", "chevron-down"), ("Mountain", "image-filter-hdr"),
-    ("Grid", "view-grid-outline"), ("Cellular", "cellphone"), ("Vibration", "vibrate"),
+    ("Contacts", "account-group-outline"), ("Keyboard", "keyboard-outline"), ("Flashlight", "flashlight"), ("Clock", "clock-outline"), ("Lock", "lock-outline"), ("Power", "power"),
+    ("Back", "chevron-left"), ("Search", "magnify"), ("Compose", "pencil-outline"), ("Menu", "menu"), ("Plus", "plus"), ("ChevronRight", "chevron-right"), ("Mountain", "image-filter-hdr"),
 ]
 PACK = [
     ("Chat", "forum"), ("Contacts", "account-group"), ("Settings", "cog"), ("Apps", "view-grid"), ("Map", "map"),

@@ -3,6 +3,7 @@
 #include "services/link_html.h"
 #include "composer_caret.h"
 #include "utf8.h"
+#include "services/keyboard_layout.h"
 #include "mesh/radio_parameters.h"
 #include "mesh/radio_presets.h"
 #include "emoji_choices.h"
@@ -53,6 +54,10 @@ static const uint16_t *lockThumb(int theme){
   auto *thumb=static_cast<uint16_t*>(heap_caps_malloc(80*60*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT));if(!thumb)return nullptr;
   for(int y=0;y<60;y++)for(int x=0;x<80;x++)thumb[y*80+x]=photo[(y*4)*mm_lock_photo::width+x*4];thumbs[theme]=thumb;}
  return thumbs[theme];}
+// Settings row detail: the enabled languages (Alt + Space switches) or the one typing.
+static std::string keyboardDetail(const State &s){
+ if(mm_kbd::enabledCount(s.kbdMask)<2)return "Typing: "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).name);
+ std::string codes;for(auto l:mm_kbd::Order)if(s.kbdMask&(1u<<int(l))){if(!codes.empty())codes+=" ";codes+=mm_kbd::info(l).code;}return codes+" (Alt + Space)";}
 void Renderer::lock(const State &s){
  // T-Deck Plus lock: the theme's Matterhorn illustration, clock placed by the theme, notification card, unlock band.
  if(const uint16_t *photo=lockPhoto(themeIndex()))c.image(0,0,photo,mm_lock_photo::width,mm_lock_photo::height);// row copies on the colour frame
@@ -318,7 +323,7 @@ void Renderer::chat(const State &s){
   int offset=std::max(0,std::min(s.scopeOffset,std::max(0,int(s.regionScopes.size())-1)));
   for(int i=0;i<ScopeRows&&offset+i<int(s.regionScopes.size());i++){auto row=scopeRowRect(i);bool selected=offset+i==s.scopeFocus;c.button(row,s.regionScopes[offset+i]=="*"?"Global (*)":s.regionScopes[offset+i],selected);}
   c.button(ScopeAdd,"+ ADD");c.button(ScopeApply,"APPLY");c.button(ScopeCancel,"CANCEL");
-  if(s.scopeEditing){g.fillRect(0,Top,W,H-Top,BG);c.card(panel);c.text(Margin+8,Top+12,"Add region scope",Font::ChatTitle);c.text(Margin+8,Top+46,"Example: it-lig",Font::ChatMeta);c.text(Margin+8,Top+62,"Letters, numbers and hyphens",Font::ChatMeta,FG,panel.w-16);c.card(ScopeInput);c.text(ScopeInput.x+7,ScopeInput.y+10,s.scopeInput.empty()?"Type a region...":s.scopeInput,Font::ChatText,FG,ScopeInput.w-14);c.button(ScopeSave,"SAVE");c.button(ScopeEditCancel,"CANCEL");if(!s.notice.empty())c.text(Margin+8,Top+185,s.notice,Font::ChatMeta,FG,panel.w-16);}
+  if(s.scopeEditing){g.fillRect(0,Top,W,H-Top,BG);c.card(panel);c.text(Margin+8,Top+12,"Add region scope",Font::ChatTitle);c.text(Margin+8,Top+46,"Example: it-lig",Font::ChatMeta);c.text(Margin+8,Top+62,s.notice.empty()?"Letters, numbers and hyphens":s.notice,Font::ChatMeta,s.notice.empty()?FG:Accent,panel.w-16);/* a rejected name replaces the hint, inside the panel */c.card(ScopeInput);c.text(ScopeInput.x+7,ScopeInput.y+10,s.scopeInput.empty()?"Type a region...":s.scopeInput,Font::ChatText,FG,ScopeInput.w-14);c.button(ScopeSave,"SAVE");c.button(ScopeEditCancel,"CANCEL");}
  }
  if(s.clearChatConfirm){Rect panel=dialogPanel();c.text(Margin+8,Top+15,"Clear all messages?",Font::ChatTitle,FG,panel.w-16);c.text(Margin+8,Top+56,"Channel and scope are kept.",Font::ChatMeta,FG,panel.w-16);c.button(ChatClearYes,"CLEAR CHAT");c.button(ChatClearNo,"CANCEL");if(!s.notice.empty())c.text(Margin+8,Top+215,s.notice,Font::ChatMeta,FG,panel.w-16);}
 
@@ -562,7 +567,7 @@ void Renderer::settings(const State &s){
   // Detail line by destination section (the row list differs between the Max and the Plus).
   int to=SettingsItems[i].section;
   std::string look=theme(s.wallpaper).name;
-  std::string detail=to==4?(s.wifiConnected?"Connected":s.wifiEnabled?"On, not connected":"Off"):to==14?(s.bleReady?"On":"Off"):to==2?(s.radioReady?"SX1262 ready":"Offline"):to==3?(s.gpsEnabled?"On":"Off"):to==6?("Screen / keyboard light"):to==22?look:to==31?(s.textSize?"Large chat text":"Compact chat text"):to==32?(s.accentMode==1?"Right Shift in chats":s.accentMode==2?"Left Shift in chats":"Off"):to==21?("Speaker / ringtones"):to==20?"Light timers / auto lock":to==5?(s.status.battery<0?"--%":std::to_string(s.status.battery)+"%"):to==16?s.timeSource:to==24?(s.sd?"SD available":"No SD"):to==17?"Update your firmware":to==SupportSection?"Support the project, Extra apps":to==11?"USB diagnostics":"Version "+s.version;
+  std::string detail=to==4?(s.wifiConnected?"Connected":s.wifiEnabled?"On, not connected":"Off"):to==14?(s.bleReady?"On":"Off"):to==2?(s.radioReady?"SX1262 ready":"Offline"):to==3?(s.gpsEnabled?"On":"Off"):to==6?("Screen / keyboard light"):to==22?look:to==31?(s.textSize?"Large chat text":"Compact chat text"):to==32?(s.accentMode==1?"Right Shift in chats":s.accentMode==2?"Left Shift in chats":"Off"):to==KeyboardSection?keyboardDetail(s):to==21?("Speaker / ringtones"):to==20?"Light timers / auto lock":to==5?(s.status.battery<0?"--%":std::to_string(s.status.battery)+"%"):to==16?s.timeSource:to==24?(s.sd?"SD available":"No SD"):to==17?"Update your firmware":to==SupportSection?"Support the project, Extra apps":to==11?"USB diagnostics":"Version "+s.version;
   c.menuRow(r,SettingsItems[i].icon,SettingsItems[i].label,detail,!s.hideFocus&&s.settingsFocus==i);
  }
  // Scroll indicator like the Home conversation list: thin track + 3 px thumb right of the cards.
@@ -572,7 +577,7 @@ void Renderer::settings(const State &s){
 void Renderer::section(const State &s){
  if(s.page==Page::Link){linkView(s);return;}
  const char *title="MatterMesh OS";
- switch(s.page){case Page::Storage:title="Storage";break;case Page::Controls:title="Lights";break;case Page::Audio:title="Sound";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Themes";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title="Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;case Page::AccentKey:title="Accent key";break;case Page::TextSize:title="Text size";break;default:break;}
+ switch(s.page){case Page::Storage:title="Storage";break;case Page::Keyboard:title="Keyboard languages";break;case Page::Controls:title="Lights";break;case Page::Audio:title="Sound";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Themes";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title="Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;case Page::AccentKey:title="Accent key";break;case Page::TextSize:title="Text size";break;default:break;}
  if(s.page==Page::Maps){g.fillScreen(BG);c.statusBar(s.status);}else{shell(s,title);g.fillRect(W-32,StatusH,32,HeaderH-1,BG);}// Plus Maps: no header, the map takes the page
  auto valueCard=[&](Rect r,const std::string &label,const std::string &value){c.card(r);c.text(r.x+7,r.y+4,label,Font::ChatMeta);c.text(r.x+7,r.y+20,value,Font::Bold,FG,r.w-14);};
  auto gb=[](uint64_t bytes){char text[16];if(bytes<1073741824ull)snprintf(text,sizeof(text),"%u MB",unsigned(bytes/1048576));else snprintf(text,sizeof(text),"%.1f GB",bytes/1073741824.0);return std::string(text);};
@@ -760,7 +765,7 @@ void Renderer::section(const State &s){
   const char *names[]={"Display / front-light","Keyboard backlight"};for(int i=0;i<2;i++){Rect r=powerRowRect(i);bool focus=s.powerField==i;c.card(r,focus);auto ink=focus?BG:FG;if(i)c.icon(Icon::Keyboard,r.x+6,r.y+(r.h-16)/2,16,ink);else{g.drawRect(r.x+7,r.y+14,16,10,ink);g.drawFastHLine(r.x+12,r.y+27,6,ink);}c.text(r.x+30,r.y+5,names[i],Font::ChatBody,ink,r.w-50);uint32_t seconds=i?s.keyboardTimeout:s.displayTimeout;std::string value=seconds==0?"Never":seconds>=60?std::to_string(seconds/60)+" minute"+(seconds>=120?"s":""):std::to_string(seconds)+" seconds";c.text(r.x+30,r.y+23,value+(seconds==30?" / default":""),Font::ChatMeta,ink,r.w-50);c.icon(Icon::ChevronRight,r.x+r.w-16,r.y+(r.h-12)/2,12,ink);}
   c.sectionLabel(timeoutOptionRect(0).y-16,s.powerField?"KEYBOARD TIMEOUT":"DISPLAY TIMEOUT");const char *labels[]={"15s","30s","1m","2m","5m","Never"};const uint32_t values[]={15,30,60,120,300,0};uint32_t selected=s.powerField?s.keyboardTimeout:s.displayTimeout;
   for(int i=0;i<6;i++){Rect r=timeoutOptionRect(i);c.card(r,selected==values[i]);c.centered(r.x,r.y+(r.h-c.lineHeight(Font::Small))/2,r.w,labels[i],Font::Small,selected==values[i]?BG:FG);}
-  int y=timeoutOptionRect(0).y+(36);c.text(Margin+2,y+(0),"Lights wake on key or touch.",Font::ChatMeta,FG,W-2*Margin);c.text(Margin+2,y+(14),"Locks after 30 s or double SPACE.",Font::ChatMeta,FG,W-2*Margin);
+  int y=timeoutOptionRect(0).y+(36);c.text(Margin+2,y+(0),"Lights wake on key or touch.",Font::ChatMeta,FG,W-2*Margin);c.text(Margin+2,y+(14),"Locks after 30 s or a trackball hold.",Font::ChatMeta,FG,W-2*Margin);
  }else if(s.page==Page::AccentKey){
   // Three choice cards: the active one is ticked, the focused one outlined.
   const char *names[]={"Off","Right Shift","Left Shift"};const char *detail[]={"No accents","Accents in chats","Accents in chats"};
@@ -835,6 +840,26 @@ void Renderer::section(const State &s){
   valueCard((settingsThird(1,Top+22)),"CPU",std::to_string(s.cpuMHz)+" MHz");valueCard((settingsThird(2,Top+22)),"MESH RX / TX",std::to_string(s.radioPacketsRX)+" / "+std::to_string(s.radioPacketsTX));
   valueCard((Rect{Margin,Top+68,W-2*Margin,40}),"UI / LCD TIME",std::to_string(s.rasterMs)+" / "+std::to_string(s.paintMs)+" ms");
   int usbY=(Top+118);c.sectionLabel(usbY,"USB SERIAL");c.text(Margin+2,usbY+18,"ui stats / radio status / status",Font::ChatMeta,FG,W-2*Margin);
+ }else if(s.page==Page::Keyboard){
+  // Search on top, one switch per language, how to switch and how to reach the extra letters below.
+  c.card(KeyboardSearch);auto tail=c.inputTail(s.kbdQuery,KeyboardSearch.w-40,Font::ChatBody);
+  c.text(KeyboardSearch.x+7,KeyboardSearch.y+5,s.kbdQuery.empty()?(s.kbdSearching?"Type a language...":"Search languages"):tail,Font::ChatBody,s.kbdQuery.empty()?Muted:FG,KeyboardSearch.w-36);
+  if(s.kbdSearching)g.drawFastVLine(KeyboardSearch.x+8+c.width(tail,Font::ChatBody),KeyboardSearch.y+5,16,FG);c.icon(Icon::Search,KeyboardSearch.x+KeyboardSearch.w-22,KeyboardSearch.y+5,16,Muted);
+  std::vector<int> rows;for(auto l:mm_kbd::Order)if(mm_kbd::matches(l,s.kbdQuery))rows.push_back(int(l));
+  int focus=rows.empty()?0:std::min(std::max(s.kbdFocus,0),int(rows.size())-1),first=std::max(0,focus-KeyboardRows+1);
+  for(int i=0;i<KeyboardRows&&first+i<int(rows.size());i++){int id=rows[first+i];auto &info=mm_kbd::info(mm_kbd::Lang(id));Rect r=keyboardRowRect(i);bool on=s.kbdMask&(1u<<id);
+   std::string detail=on&&id==s.kbdLang&&mm_kbd::enabledCount(s.kbdMask)>1?std::string("In use (")+info.code+")":std::string(info.code)+(std::string(info.english)!=info.name?std::string(" / ")+info.english:"");
+   c.card(r);c.icon(Icon::Keyboard,r.x+6,r.y+(r.h-24)/2,24,FG);const int pw=44,px=r.x+r.w-pw-6,py=r.y+(r.h-22)/2,ty=r.y+(r.h-c.lineHeight(Font::ChatBody))/2+1;
+   c.text(r.x+36,ty,info.name,Font::ChatBody,FG,px-r.x-44);int nx=r.x+36+c.width(info.name,Font::ChatBody)+8;if(nx<px-12)c.text(nx,ty+1,detail,Font::ChatMeta,Muted,px-nx-8);
+   if(on)c.fillRound(px,py,pw,22,11,Accent);else g.drawRoundRect(px,py,pw,22,11,Muted);c.centered(px,py+5,pw,on?"ON":"OFF",Font::Bold,on?OnAccent:FG);
+   if(first+i==focus&&!s.kbdSearching&&!s.hideFocus)g.drawRoundRect(r.x+1,r.y+1,r.w-2,r.h-2,Radius,Accent);}
+  if(rows.empty())c.centered(Margin,Top+80,W-2*Margin,"No language matches",Font::ChatBody);
+  int y=KeyboardHelpY;
+  std::string howto=mm_kbd::enabledCount(s.kbdMask)>1?"Alt + Space: next language (now "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).code)+")":"Turn on two languages, then Alt + Space switches between them";
+  if(!s.notice.empty()){c.text(Margin+2,y,s.notice,Font::ChatMeta,Accent,W-2*Margin-4);y+=13;}// the notice takes the how-to line
+  else for(auto &line:c.lines(howto,W-2*Margin-4,Font::ChatMeta)){c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}std::string help=rows.empty()?"":mm_kbd::accentHelp(mm_kbd::Lang(rows[focus]));
+  if(!help.empty())help=(s.accentMode==1?"Right Shift is the accent key. ":s.accentMode==2?"Left Shift is the accent key. ":"Turn on the accent key (Settings > Accent key). ")+help;
+  int helpRows=(H-2-y)/13;if(helpRows>0)for(auto &line:c.clampLines(help,W-2*Margin-4,Font::ChatMeta,helpRows,"..")){c.text(Margin+2,y,line,Font::ChatMeta,Muted);y+=13;}
  }else if(s.page==Page::DateTime){
   valueCard({Margin,Top+6,W-2*Margin,40},"NOW",s.status.clock+"   "+s.date);
   c.text(Margin+2,Top+49,"Synchronised from: "+s.timeSource,Font::ChatMeta,Muted,W-2*Margin);// ends above the SET BY HAND label
@@ -865,7 +890,7 @@ void Renderer::section(const State &s){
   c.centered(Margin,Top+80,W-2*Margin,line,Font::Bold);
   if(s.page==Page::Terminal){c.text(Margin,Top+112,"status / shot / home / apps",Font::Body);c.text(Margin,Top+134,"Existing USB commands preserved",Font::Small);}
  }
- if(!s.notice.empty()&&s.page!=Page::Radio&&s.page!=Page::Weather&&s.page!=Page::Wifi){c.footer(s.notice,"");}
+ if(!s.notice.empty()&&s.page!=Page::Radio&&s.page!=Page::Weather&&s.page!=Page::Wifi&&s.page!=Page::Keyboard){c.footer(s.notice,"");}// Keyboard draws its notice above the help
 }
 #include "quick_settings_renderer.inc"
 #include "cli_renderer.inc"

@@ -11,7 +11,7 @@ void loadMapStyle(){mapStyleIndex=device::prefGetInt("mmmap","style",0)?1:0;}
 void mapToggleStyle(){mapStyleIndex^=1;device::prefPutInt("mmmap","style",mapStyleIndex);render();}
 static uint8_t *mapViewBits=nullptr;static int mapVisibleCount=0,mapMissingCount=0;
 static struct {double lat=0,lon=0;int z=-1,style=-1;uint32_t rev=0;} composed;// what mapViewBits holds (z=-1: nothing)
-constexpr int MapViewStride=(mm::MapArea.w+7)/8;constexpr size_t MapViewBytes=(size_t(mm::MapArea.w)*mm::MapArea.h*2);// RGB565 view on the Plus
+constexpr size_t MapViewBytes=(size_t(mm::MapArea.w)*mm::MapArea.h*2);// RGB565 view on the Plus
 static uint8_t *mapAllocView(){return static_cast<uint8_t*>(heap_caps_malloc(MapViewBytes,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT));}
 // Composes the tiles around (lat,lon,z) into bits; returns how many visible tiles are missing.
 static int mapComposeTiles(uint8_t *bits,double lat,double lon,int z,bool reuse=false){// reuse: bits already hold this view

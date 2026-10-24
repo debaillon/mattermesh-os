@@ -40,7 +40,7 @@ public:
  void quickTile(int index,const std::string &label,bool on,int glyph);
  void draw(const State &s);
  void welcome(const State &s);// first-boot setup
- void holdBanner(const std::string &label,int progress,int elapsedTenths,bool done=false,Icon icon=Icon::Lock);
+ void holdBanner(const std::string &label);// one-line notice card under the status bar
  void unlockTapBanner(int taps);
  void messageBanner(const std::string &sender,const std::string &preview);
 };

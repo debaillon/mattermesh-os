@@ -8,6 +8,7 @@
 #include "ui/utf8.h"
 #include "ui/composer_caret.h"
 #include "ui/emoji_choices.h"
+#include "services/keyboard_layout.h"
 int main(){
  GFXcanvas1 canvas(mm::W,mm::H);mm::Components c(canvas);
  assert(mm::senderDisplayName("Ridge_L1 🇮🇹")=="Ridge_L1");assert(mm::senderDisplayName("IT Field 🙂")=="IT Field 🙂");
@@ -21,8 +22,6 @@ int main(){
  mm::Status status;status.mesh=false;c.statusBar(status);std::vector<uint8_t> noSignal(canvas.getBuffer(),canvas.getBuffer()+mm::W/8*mm::StatusH);status.mesh=true;c.statusBar(status);assert(!memcmp(noSignal.data(),canvas.getBuffer(),noSignal.size()));
  for(int i=0;i<3;i++){auto r=mm::formRect(i);assert(r.y>=mm::Top&&r.y+r.h<mm::SaveButton.y);}
  assert(mm::SaveButton.y+mm::SaveButton.h<mm::Bottom);
- for(int i=0;i<3;i++)for(bool b:{false,true}){auto r=mm::controlButton(i,b);assert(r.x>=0&&r.y>=mm::Top&&r.x+r.w<=mm::W&&r.y+r.h<mm::Bottom);}
- for(int i=0;i<2;i++){auto r=mm::radioAntennaRect(i);assert(r.x>=mm::Margin&&r.y>=mm::Top&&r.x+r.w<=mm::W-mm::Margin&&r.y+r.h<mm::RadioAdvert.y);}
  assert(mm::RadioAdvert.y+mm::RadioAdvert.h<mm::Bottom);
  for(int i=0;i<mm::WifiRows;i++){auto r=mm::wifiRowRect(i);assert(r.y+r.h<=mm::Bottom);}
  for(int i=0;i<mm::FileRows;i++){auto r=mm::fileRowRect(i);assert(r.y+r.h<=mm::Bottom);}
@@ -137,5 +136,16 @@ int main(){
    int legend=0;for(int y=mm::MapArea.y+mm::MapArea.h+2;y<mm::Bottom;y++)for(int x=0;x<mm::W;x++)legend+=px(x,y);assert(legend>40);
    bool button=false;auto b=mm::mapButtonRect(1);for(int x=b.x;x<b.x+b.w;x++)button|=px(x,b.y+b.h-1);assert(!button);}
   r.draw(m);bool inked=false;for(int x=mm::mapButtonRect(1).x;x<mm::mapButtonRect(1).x+mm::mapButtonRect(1).w;x++)inked|=px(x,mm::mapButtonRect(1).y+14);assert(inked);}
- std::cout<<"PASS: panel bounds, grid separation, form/control bounds, unbroken message wrap, no-op/partial/full refresh planning, maximum-length message rendering, Home clock/date/status visible-ink centering.\n";
+ // Keyboard languages: the toggleRow detail line stays inside the focus outline, the rows end above the help, and the
+ // help fits for every language with the two-line how-to and a notice line (one language on, focus on that row).
+ {const int line=mm::Components::lineHeight(mm::Font::ChatMeta),wrap=mm::W-2*mm::Margin-4;assert(22+line<=mm::KeyboardRowH-3);
+  auto last=mm::keyboardRowRect(mm::KeyboardRows-1);assert(last.y+last.h<mm::KeyboardHelpY&&mm::KeyboardSearch.y+mm::KeyboardSearch.h<mm::keyboardRowRect(0).y);
+  int howto=int(c.lines("Turn on two languages, then Alt + Space switches between them",wrap,mm::Font::ChatMeta).size());
+  for(int i=0;i<mm_kbd::LangCount;i++){std::string help=mm_kbd::accentHelp(mm_kbd::Lang(i));int n=1+howto+(help.empty()?0:int(c.lines("Left Shift is the accent key. "+help,wrap,mm::Font::ChatMeta).size()));
+   assert(mm::KeyboardHelpY+(n-1)*line<=mm::Bottom-12);}}
+ // The Keyboard page shows its notice once, above the help: no footer copy at the bottom.
+ {mm::State k;k.page=mm::Page::Keyboard;mm::Renderer renderer(canvas);renderer.draw(k);
+  std::vector<uint8_t> plain(canvas.getBuffer()+mm::W/8*mm::FooterY,canvas.getBuffer()+mm::W/8*mm::H);
+  k.notice="Save failed";renderer.draw(k);assert(!memcmp(plain.data(),canvas.getBuffer()+mm::W/8*mm::FooterY,plain.size()));}
+ std::cout<<"PASS: panel bounds, keyboard-language rows and help, grid separation, form/control bounds, unbroken message wrap, no-op/partial/full refresh planning, maximum-length message rendering, Home clock/date/status visible-ink centering.\n";
 }

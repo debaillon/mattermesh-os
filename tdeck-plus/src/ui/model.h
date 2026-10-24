@@ -6,7 +6,7 @@
 #include "mesh/message_limits.h"
 namespace mm {
 enum class WeatherPhaseView {Closed,WifiOff,Connecting,NoNetwork,WaitingClock,Locating,Fetching,Ready,Error};
-enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Storage,QuickSettings,Cli,ContactPicker,TextSize,AccentKey ,Link,Support};
+enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Keyboard,Storage,QuickSettings,Cli,ContactPicker,TextSize,AccentKey ,Link,Support};
 struct Conversation { std::string name,scope,preview,time="--:--",sender,age="--";bool direct=false;int id=0,unread=0,activity=0; };
 struct Message {std::string sender,time,body,meta;bool mine;std::string path,heard,scope;int hops=-1;uint32_t token=0;int repeaters=-1;Message(std::string s="",std::string t="",std::string b="",std::string m="",bool own=false):sender(s),time(t),body(b),meta(m),mine(own){} };
 struct ContactRow {std::string name,detail;};
@@ -45,6 +45,7 @@ bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
  bool shutdownConfirm=false,usbPower=false,powerSourceKnown=false;
  // First-boot welcome (Plus): step 0 intro, 1 Wi-Fi and clock, 2 band, 3 preset, 4 name, 5 path bytes, 6 summary.
  int dtField[5]={1,1,2026,0,0},dtFocus=0;
+ std::string kbdQuery;bool kbdSearching=false;int kbdFocus=0,kbdLang=0;uint32_t kbdMask=1;// Settings > Keyboard languages
  // Storms app (Plus): status line, one row per event of the next 24 h.
  struct StormRow{std::string title,when,detail;bool thunder=false;};std::vector<StormRow> stormRows;std::string stormHead,stormSub;bool stormAlerts=true,stormBusy=false,stormReady=false;int stormOffset=0,weatherTab=0;// weatherTab: 0 now, 1 storms, 2 radar
  std::string radarTime,radarMessage;int radarZoom=7;// RADAR tab: frame time, status, zoom (the view itself is mapPixels)// Date / time editor (Plus): day, month, year, hour, minute

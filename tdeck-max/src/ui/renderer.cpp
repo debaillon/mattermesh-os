@@ -14,6 +14,7 @@
 #include "services/dictation_policy.h"
 #include "services/channel_form.h"
 #include "os_logo_bitmap.h"
+#include "services/keyboard_layout.h"
 #include <cmath>
 #include <algorithm>
 namespace mm {
@@ -378,15 +379,13 @@ void Renderer::welcome(const State &s){
  if(step>0)c.button(WelcomeBack,"BACK",false);
  c.button(WelcomeNext,step==0?"START":step==6?"FINISH":step==1&&s.welcomeWifiChoice==0&&!s.wifiConnected?"CONNECT":"NEXT",true);
 }
-void Renderer::holdBanner(const std::string &label,int progress,int elapsedTenths,bool done,Icon icon){
- // Same shell as unlockTapBanner: the date/header band, a card with the icon, the label and dots on the right.
- // Six dots stand for the 2 s hold (one every third of a second); all filled when the action is done.
- (void)elapsedTenths;progress=done?HoldDots:std::max(0,std::min(HoldDots,progress));
+void Renderer::holdBanner(const std::string &label){
+ // Same shell as unlockTapBanner: the date/header band, a card with the lock icon, the label and six filled dots.
  g.fillRect(0,HoldBannerY,W,HoldBannerH,BG);
  Rect r={Margin,HoldBannerY+3,W-2*Margin,HoldBannerH-6};c.card(r);
- c.icon(icon,r.x+8,r.y+(r.h-16)/2,16);
+ c.icon(Icon::Lock,r.x+8,r.y+(r.h-16)/2,16);
  c.text(r.x+30,r.y+(r.h-c.lineHeight(Font::ChatMeta))/2,label,Font::ChatMeta,FG,r.w-30-HoldDotsW-8);
- for(int i=0;i<HoldDots;i++){int cx=r.x+r.w-HoldDotsW+HoldDotR+i*HoldDotStep,cy=r.y+r.h/2;if(i<progress)g.fillCircle(cx,cy,HoldDotR,FG);else g.drawCircle(cx,cy,HoldDotR,FG);}
+ for(int i=0;i<HoldDots;i++)g.fillCircle(r.x+r.w-HoldDotsW+HoldDotR+i*HoldDotStep,r.y+r.h/2,HoldDotR,FG);
 }
 
 void Renderer::unlockTapBanner(int taps){
@@ -430,7 +429,17 @@ void Renderer::settings(const State &s){
  // A group label is drawn only together with its first row, so it never sits alone at the bottom.
  for(int i=0;i<3;i++)if(settingsVisible(first[i],s.settingsOffset))c.text(Margin+2,settingsRect(first[i],s.settingsOffset).y-15,groups[i],Font::ChatMeta);
  for(int i=0;i<SettingsCount;i++){if(!settingsVisible(i,s.settingsOffset))continue;auto r=settingsRect(i,s.settingsOffset);
-  std::string detail=i==0?(s.wifiConnected?"Connected":s.wifiEnabled?"On, not connected":"Off"):i==1?(s.bleReady?"On":"Off"):i==2?(s.radioReady?"SX1262 ready":"Offline"):i==3?(s.radioInternal?"Internal antenna":"External antenna"):i==4?(s.gpsEnabled?"On":"Off"):i==5?"Lights / haptics":i==6?std::string("Lock screen: ")+mm_wallpaper::list[s.wallpaper>=0&&s.wallpaper<mm_wallpaper::count?s.wallpaper:0].name:i==7?"Speaker / microphone":i==8?"Light timers / auto lock":i==9?(s.status.battery<0?"--%":std::to_string(s.status.battery)+"%"):i==10?s.timeSource:i==11?(s.sd?"SD available":"No SD"):i==12?"USB diagnostics":i==13?"Update your firmware":SettingsItems[i].section==SupportSection?(s.extraAppsUnlocked?"Support the project":"Support the project, Extra apps"):"Version "+s.version;
+  // Detail by section (not by row), so rows can be added or moved.
+  auto detailFor=[&](int section)->std::string{switch(section){
+   case 4:return s.wifiConnected?"Connected":s.wifiEnabled?"On, not connected":"Off";case 14:return s.bleReady?"On":"Off";
+   case 2:return s.radioReady?"SX1262 ready":"Offline";case 23:return s.radioInternal?"Internal antenna":"External antenna";
+   case 3:return s.gpsEnabled?"On":"Off";case 6:return "Lights / haptics";
+   case 22:return std::string("Lock screen: ")+mm_wallpaper::list[s.wallpaper>=0&&s.wallpaper<mm_wallpaper::count?s.wallpaper:0].name;
+   case KeyboardSection:{std::string codes;for(auto l:mm_kbd::Order)if(s.kbdMask&(1u<<int(l))){if(!codes.empty())codes+=" ";codes+=mm_kbd::info(l).code;}return mm_kbd::enabledCount(s.kbdMask)>1?codes+" (Alt + Space)":"Typing: "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).name);}
+   case 21:return "Speaker / microphone";case 20:return "Light timers / auto lock";case 5:return s.status.battery<0?"--%":std::to_string(s.status.battery)+"%";
+   case 16:return s.timeSource;case 24:return s.sd?"SD available":"No SD";case 11:return "USB diagnostics";case 17:return "Update your firmware";
+   case SupportSection:return s.extraAppsUnlocked?"Support the project":"Support the project, Extra apps";default:return "Version "+s.version;}};
+  std::string detail=detailFor(SettingsItems[i].section);
   // Full image with the Extra apps unlocked: the entry is only for donations.
   const char *label=SettingsItems[i].section==SupportSection&&s.extraAppsUnlocked?"Donate":SettingsItems[i].label;
   c.menuRow(r,SettingsItems[i].icon,label,detail,s.settingsFocus==i);
@@ -441,7 +450,7 @@ void Renderer::settings(const State &s){
 }
 void Renderer::section(const State &s){
  const char *title="MatterMesh OS";
- switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;default:break;}
+ switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;default:break;}
  if(s.page==Page::Maps){g.fillScreen(BG);c.statusBar(s.status);}else{shell(s,title);g.fillRect(W-32,StatusH,32,HeaderH-1,BG);}// Maps: no header, the map takes the page
  auto valueCard=[&](Rect r,const std::string &label,const std::string &value){c.card(r);c.text(r.x+7,r.y+4,label,Font::ChatMeta);c.text(r.x+7,r.y+20,value,Font::Bold,FG,r.w-14);};
  auto gb=[](uint64_t bytes){char text[16];if(bytes<1073741824ull)snprintf(text,sizeof(text),"%u MB",unsigned(bytes/1048576));else snprintf(text,sizeof(text),"%.1f GB",bytes/1073741824.0);return std::string(text);};
@@ -625,6 +634,23 @@ void Renderer::section(const State &s){
   c.sectionLabel(timeoutOptionRect(0).y-16,s.powerField?"KEYBOARD TIMEOUT":"DISPLAY TIMEOUT");const char *labels[]={"15s","30s","1m","2m","5m","Never"};const uint32_t values[]={15,30,60,120,300,0};uint32_t selected=s.powerField?s.keyboardTimeout:s.displayTimeout;
   for(int i=0;i<6;i++){Rect r=timeoutOptionRect(i);c.card(r,selected==values[i]);c.centered(r.x,r.y+(r.h-c.lineHeight(Font::Small))/2,r.w,labels[i],Font::Small,selected==values[i]?BG:FG);}
   int y=timeoutOptionRect(0).y+44;c.sectionLabel(y,"AUTO LOCK");c.text(Margin+2,y+18,"Lights wake on key or touch.",Font::ChatMeta,FG,W-2*Margin);c.text(Margin+2,y+34,"Locks after 60 s or double SPACE.",Font::ChatMeta,FG,W-2*Margin);
+ }else if(s.page==Page::Keyboard){
+  // Search on top, one switch per language, and how to switch / reach the extra letters below.
+  c.card(KeyboardSearch);auto tail=c.inputTail(s.kbdQuery,KeyboardSearch.w-40,Font::ChatBody);
+  c.text(KeyboardSearch.x+7,KeyboardSearch.y+5,s.kbdQuery.empty()?(s.kbdSearching?"Type a language...":"Search languages"):tail,Font::ChatBody,FG,KeyboardSearch.w-36);
+  if(s.kbdSearching)g.drawFastVLine(KeyboardSearch.x+8+c.width(tail,Font::ChatBody),KeyboardSearch.y+5,16,FG);c.icon(Icon::Search,KeyboardSearch.x+KeyboardSearch.w-22,KeyboardSearch.y+5,16);
+  std::vector<int> rows;for(auto l:mm_kbd::Order)if(mm_kbd::matches(l,s.kbdQuery))rows.push_back(int(l));
+  int focus=rows.empty()?0:std::min(std::max(s.kbdFocus,0),int(rows.size())-1),first=std::max(0,focus-KeyboardRows+1);
+  for(int i=0;i<KeyboardRows&&first+i<int(rows.size());i++){int id=rows[first+i];auto &info=mm_kbd::info(mm_kbd::Lang(id));Rect r=keyboardRowRect(i);bool on=s.kbdMask&(1u<<id);
+   std::string detail=on&&id==s.kbdLang&&mm_kbd::enabledCount(s.kbdMask)>1?std::string("In use (")+info.code+")":std::string(info.english)+"  "+info.code;
+   c.toggleRow(r,Icon::Keyboard,info.name,detail,on);if(first+i==focus&&!s.kbdSearching)g.drawRoundRect(r.x+2,r.y+2,r.w-4,r.h-4,Radius-1,FG);}
+  if(rows.empty())c.centered(Margin,Top+80,W-2*Margin,"No language matches",Font::ChatBody);
+  int y=KeyboardHelpY;
+  if(!s.notice.empty()){c.text(Margin+2,y,s.notice,Font::ChatMeta,FG,W-2*Margin-4);y+=13;}
+  std::string howto=mm_kbd::enabledCount(s.kbdMask)>1?"Alt + Space: next language (now "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).code)+")":"Turn on two languages, then Alt + Space switches between them";
+  for(auto &line:c.lines(howto,W-2*Margin-4,Font::ChatMeta)){c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}std::string help=rows.empty()?"":mm_kbd::accentHelp(mm_kbd::Lang(rows[focus]));
+  if(!help.empty())help="Left Shift is the accent key. "+help;
+  if(!help.empty())for(auto &line:c.lines(help,W-2*Margin-4,Font::ChatMeta)){if(y>Bottom-12)break;c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}
  }else if(s.page==Page::Wallpaper){
   c.sectionLabel(Top+6,"LOCK SCREEN");
   for(int i=0;i<WallpaperCardCount&&i<mm_wallpaper::count;i++){Rect r=wallpaperCardRect(i);bool focus=s.wallpaperFocus==i,active=s.wallpaper==i;c.card(r,focus);
@@ -690,7 +716,7 @@ void Renderer::section(const State &s){
   // Every section has its own page above; anything else (a section number typed on the serial) is a blank card.
   c.icon(Icon::Tools,(W-32)/2,Top+24,32);c.centered(Margin,Top+80,W-2*Margin,"Not available",Font::Bold);
  }
- if(!s.notice.empty()&&s.page!=Page::Radio&&s.page!=Page::Weather&&s.page!=Page::Wifi&&s.page!=Page::Mesh&&s.page!=Page::Maps){c.footer(s.notice,"");}
+ if(!s.notice.empty()&&s.page!=Page::Radio&&s.page!=Page::Weather&&s.page!=Page::Wifi&&s.page!=Page::Mesh&&s.page!=Page::Maps&&s.page!=Page::Keyboard){c.footer(s.notice,"");}// Keyboard draws its notice above the help
 }
 #include "quick_settings_renderer.inc"
 #include "cli_renderer.inc"

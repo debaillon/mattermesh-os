@@ -15,7 +15,6 @@ int main(){
  taps.reset();assert(taps.press(11000));assert(!taps.release(11100));assert(taps.expire(11100+device::UNLOCK_TAP_WINDOW_MS+1));assert(taps.taps==0);
  taps.reset();assert(taps.press(15000));assert(!taps.release(15010)&&taps.taps==0);assert(taps.press(15050));assert(!taps.release(15100));assert(taps.press(18000)&&taps.taps==1);
  device::UnlockTaps wrap;assert(wrap.press(0xfffffff0));assert(!wrap.release(50));assert(wrap.press(100));assert(wrap.release(180));
- assert(device::unlockOpensChat(2,4,1));assert(!device::unlockOpensChat(2,4,0));assert(!device::unlockOpensChat(-1,4,1));
  assert(device::lockedCpuFrequency(false,false,false,false)==40);assert(device::lockedCpuFrequency(true,false,false,false)==80);assert(device::lockedCpuFrequency(false,true,false,false)==80);assert(device::lockedCpuFrequency(false,false,true,false)==80);assert(device::lockedCpuFrequency(false,false,false,true)==80);
  GFXcanvas1 canvas(mm::W,mm::H);mm::Renderer r(canvas);mm::State s;s.page=mm::Page::Chat;s.chatName="Italia";s.messageMenu=true;r.draw(s);
  for(int i=0;i<3;i++){auto rect=mm::chatOptionRect(i);assert(rect.x>=mm::Margin&&rect.x+rect.w<=mm::W-mm::Margin&&rect.y>=mm::Top&&rect.y+rect.h<mm::Bottom);}

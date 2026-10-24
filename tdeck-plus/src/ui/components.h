@@ -6,10 +6,10 @@
 #include "fast_canvas.h"
 namespace mm {
 enum class Font { Small,Body,Bold,Title,Brand,Clock,Tiny,HomeClock,LockText,ChatBody,ChatMeta,ChatTitle,MenuClock,MenuLabel,LockClock,NavLabel,ChatText };// ChatText: chat bubbles and composer (larger on the T-Deck Plus LCD, = ChatBody on e-paper)
-enum class Icon { Messages,Mesh,Maps,Weather,Radio,Files,Terminal,Notes,Tools,Settings,GPS,Info,Battery,Signal,Wifi,Bluetooth,Contacts,Keyboard,Compass,Flashlight,Clock,Lock,Power,Back,Search,Compose,Menu,Send,Plus,ChevronRight,ChevronDown,Mountain,Grid,Cellular,Vibration };
+enum class Icon { Messages,Mesh,Weather,Radio,Files,Terminal,Notes,Tools,Settings,GPS,Info,Battery,Signal,Wifi,Bluetooth,Contacts,Keyboard,Flashlight,Clock,Lock,Power,Back,Search,Compose,Menu,Plus,ChevronRight,Mountain };// order = tools/make_aa_icons.py ICONS
 // MatterMesh OS icon pack: sprites mm_aa_icons::PackFirst+id (tools/make_aa_icons.py).
 enum class PackIcon { Chat,Contacts,Settings,Apps,Map,Files,Weather,Signal,Tools,List,Radio,Keyboard };
-struct Status { std::string clock="--:--";int battery=-1,unread=0;bool mesh=false,wifi=false,bt=false,gps=false,acquiringTime=false,charging=false; };
+struct Status { std::string clock="--:--";int battery=-1,unread=0;bool mesh=false,wifi=false,bt=false,gps=false,acquiringTime=false,charging=false;std::string keyboard;/* keyboard language code, only with 2+ languages on */ };
 struct StatusLayout {std::string percent;int percentX,percentWidth,batteryX,iconsRight;};
 class Components {
  Adafruit_GFX &g;

@@ -71,7 +71,7 @@ constexpr Rect EmojiPopup=(Rect{Margin,ComposerY-162,W-2*Margin,160});
 
 constexpr Rect ChatMenu={W-32,StatusH,32,HeaderH};
 // T-Deck Plus: no Antenna row (one LoRa antenna), Wallpaper becomes Themes.
-constexpr int SettingsCount=17,SettingsRowH=36,SettingsDeviceFirst=4,SettingsSystemFirst=11;// Plus: Text size and Accent key rows after Themes
+constexpr int SettingsCount=18,SettingsRowH=36,SettingsDeviceFirst=4,SettingsSystemFirst=12;// Plus: Text size, Accent key and Keyboard languages rows after Themes
 // First-boot welcome (Plus landscape): BACK / NEXT at the bottom, two or three choice cards, preset rows.
 constexpr Rect WelcomeBack={Margin,H-38,92,30},WelcomeNext={W-Margin-128,H-38,128,30};
 constexpr int WelcomeRows=4,WelcomeRowH=34,WelcomeRowY=60;
@@ -98,6 +98,11 @@ inline Rect settingsThird(int column,int y,int span=1,int h=40){int w=(W-2*Margi
 constexpr const char *DeviceLabel="T-Deck Plus 320x240";
 constexpr Rect GpsToggle=SettingsSwitch;
 // Text size page (Plus, section 31): two sample cards (Compact / Large) and the info line below.
+// Settings > Keyboard languages (section 12): search, KeyboardRows language rows with a switch, help under the list.
+constexpr int KeyboardSection=12,KeyboardRows=3,KeyboardRowH=28;// one-line rows: name, code / English name, switch
+constexpr Rect KeyboardSearch={Margin+6,Top+6,W-2*(Margin+6),26};
+inline Rect keyboardRowRect(int i){return {Margin,Top+36+i*(KeyboardRowH+2),W-2*Margin,KeyboardRowH};}
+constexpr int KeyboardHelpY=Top+38+KeyboardRows*(KeyboardRowH+2);// four help lines fit below the rows
 constexpr int TextSizeSection=31,TextSizeInfoY=Top+126;
 // Date / time (Plus): five spinner boxes DD MM YYYY  HH MM (upper half +, lower half -) and SET at the bottom.
 constexpr int DateTimeBoxY=Top+80,DateTimeBoxH=50;constexpr Rect DateTimeSet={Margin,DateTimeBoxY+DateTimeBoxH+8,W-2*Margin,28};
@@ -269,7 +274,6 @@ inline Rect ownMessageActionRect(int index){if(index==0)return {Margin+8,Top+36,
 constexpr Rect MapArea=(Rect{0,StatusH,W,H-StatusH});
 constexpr Rect mapButtonRect(int index){return (Rect{W-Margin-30,H-Margin-30-(index==0?0:index==2?34:68),30,30});}
 constexpr Rect MapStyleButton={W-Margin-60,StatusH+6,60,24},MapBackFloat={6,StatusH+6,28,28};
-constexpr Rect ConfirmYes={Margin,DialogButtonY,108,30},ConfirmNo={(W-Margin-108),DialogButtonY,108,30};
 // Quick settings, opened by tapping the status bar: two 0..16 sliders with a
 // label line above each track, then a 2x3 tile grid (index = row*2+column).
 // Section 18 is unused.

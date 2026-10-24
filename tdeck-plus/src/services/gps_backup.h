@@ -22,7 +22,6 @@ struct GpsBackup {
   out.insert(out.end(),p,p+n);uint8_t a=0,b=0;for(size_t i=start+2;i<out.size();i++){a+=out[i];b+=a;}out.push_back(a);out.push_back(b);
  }
  static void put32(uint8_t *p,uint32_t v){p[0]=uint8_t(v);p[1]=uint8_t(v>>8);p[2]=uint8_t(v>>16);p[3]=uint8_t(v>>24);}
- static uint32_t get32(const uint8_t *p){return uint32_t(p[0])|uint32_t(p[1])<<8|uint32_t(p[2])<<16|uint32_t(p[3])<<24;}
  // "MMGN", version 1, 3 reserved, saved epoch (0 = clock unknown), then the MGA-DBD frames verbatim.
  static int count(const std::vector<uint8_t> &d){
   if(d.size()<HeaderSize||d.size()>MaxBytes||d[0]!='M'||d[1]!='M'||d[2]!='G'||d[3]!='N'||d[4]!=1)return -1;int n=0;
