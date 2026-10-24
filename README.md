@@ -3,6 +3,17 @@
 An alternative firmware for the LilyGO **T-Deck Plus** and **T-Deck Max**, built on [MeshCore](https://github.com/meshcore-dev/MeshCore):
 off-grid LoRa chat with a real keyboard, designed for use in the field.
 
+<table>
+<tr>
+<td align="center"><img src="docs/images/plus-lock.png" width="400" alt="T-Deck Plus lock screen"><br><b>T-Deck Plus</b> · lock screen</td>
+<td align="center"><img src="docs/images/max-lock.png" width="280" alt="T-Deck Max lock screen"><br><b>T-Deck Max</b> · lock screen</td>
+</tr>
+<tr>
+<td align="center"><img src="docs/images/plus-chat.png" width="400" alt="T-Deck Plus chat"><br>Chat in two languages (Plus)</td>
+<td align="center"><img src="docs/images/max-chat.png" width="280" alt="T-Deck Max chat"><br>Chat in two languages (Max)</td>
+</tr>
+</table>
+
 This repository holds the source of the **Free edition**, released under the GNU General Public License v3.0.
 
 | Folder | Device | Display |
@@ -16,6 +27,7 @@ MeshCore companion protocol, so they work with the MeshCore apps and with every 
 ## What's in the Free edition
 
 - Channel and direct chats, contacts, emoji, mentions and quick replies; themes and lock screens (Plus), wallpapers (Max)
+- **Keyboard languages**: Italian, English, German, French, Spanish, Portuguese, Russian and Ukrainian (Settings → Keyboard languages, with search). Alt + Space switches between the enabled languages and the one in use shows in the status bar; the accent key, tapped before a letter, types the letters without a key of their own
 - MeshCore companion over Bluetooth, USB and Wi-Fi
 - Apps: **Maps** (OpenStreetMap tiles with GPS), **Weather** (Open-Meteo; on the Plus also radar and storm alerts), **Files**, **CLI**
 - On the Max: offline Italian dictation (the speech model is loaded from the SD card and is distributed separately)
