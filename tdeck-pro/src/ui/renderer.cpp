@@ -439,12 +439,9 @@ void Renderer::settings(const State &s){
    case KeyboardSection:{std::string codes;for(auto l:mm_kbd::Order)if(s.kbdMask&(1u<<int(l))){if(!codes.empty())codes+=" ";codes+=mm_kbd::info(l).code;}return mm_kbd::enabledCount(s.kbdMask)>1?codes+" (Alt + Space)":"Typing: "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).name);}
    case AccentKeySection:return s.accentMode==1?"Right Shift":s.accentMode==2?"Left Shift":"Off";
    case 21:return "Volume / notification sounds";case 20:return "Light timers / auto lock";case 5:return s.status.battery<0?"--%":std::to_string(s.status.battery)+"%";
-   case 24:return s.sd?"SD available":"No SD";case 11:return "USB diagnostics";case 17:return "Update your firmware";
-   case SupportSection:return s.extraAppsUnlocked?"Support the project":"Support the project, Extra apps";default:return "Version "+s.version;}};
+   case 24:return s.sd?"SD available":"No SD";case 11:return "USB diagnostics";default:return "";}};
   std::string detail=detailFor(SettingsItems[i].section);
-  // Full image with the Extra apps unlocked: the entry is only for donations.
-  const char *label=SettingsItems[i].section==SupportSection&&s.extraAppsUnlocked?"Donate":SettingsItems[i].label;
-  c.menuRow(r,SettingsItems[i].icon,label,detail,s.settingsFocus==i);
+  c.menuRow(r,SettingsItems[i].icon,SettingsItems[i].label,detail,s.settingsFocus==i);
  }
  // Scroll indicator like the Home conversation list: thin track + 3 px thumb right of the cards.
  if(int max=settingsMaxScroll();max>0){int track=Bottom-SettingsListY,total=settingsContentY(SettingsCount-1)+SettingsCardH,thumb=std::max(12,track*track/total),offset=std::min(s.settingsOffset,max);
@@ -452,7 +449,7 @@ void Renderer::settings(const State &s){
 }
 void Renderer::section(const State &s){
  const char *title="MatterMesh OS";
- switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;case Page::Music:title="Music";break;case Page::Books:title=s.epubOpen?s.epubTitle.c_str():"Books";break;default:break;}
+ switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::Battery:title="Battery";break;case Page::Music:title="Music";break;case Page::Books:title=s.epubOpen?s.epubTitle.c_str():"Books";break;default:break;}
  if(s.page==Page::Maps){g.fillScreen(BG);c.statusBar(s.status);}else{shell(s,title);g.fillRect(W-32,StatusH,32,HeaderH-1,BG);}// Maps: no header, the map takes the page
  auto valueCard=[&](Rect r,const std::string &label,const std::string &value){c.card(r);c.text(r.x+7,r.y+4,label,Font::ChatMeta);c.text(r.x+7,r.y+20,value,Font::Bold,FG,r.w-14);};
  auto gb=[](uint64_t bytes){char text[16];if(bytes<1073741824ull)snprintf(text,sizeof(text),"%u MB",unsigned(bytes/1048576));else snprintf(text,sizeof(text),"%.1f GB",bytes/1073741824.0);return std::string(text);};
@@ -562,6 +559,7 @@ void Renderer::section(const State &s){
   valueCard(settingsHalf(0,Top+180),"ALTITUDE",s.gpsFix?std::to_string(int(s.altitude))+" m":"--");
   valueCard(settingsHalf(1,Top+180),"RECEIVER",!s.gpsEnabled?"Off":s.gpsNmeaFresh?"NMEA "+std::to_string(s.gpsBaud):s.gpsData?"No fresh NMEA":"No data");
   if(s.gpsTimeValid)c.text(Margin+2,Top+228,"GPS date / time available",Font::ChatMeta,FG,W-2*Margin);
+  c.button(GpsTimeSync,s.timeSyncBusy?"SYNCING...":"UPDATE DATE / TIME",s.timeSyncBusy);
  }else if(s.page==Page::Weather){
   bool data=s.weatherValid,offline=s.weatherPhase==WeatherPhaseView::WifiOff||s.weatherPhase==WeatherPhaseView::NoNetwork;
   auto number=[](float v){return std::to_string(int(std::lround(v)));};
@@ -677,26 +675,6 @@ void Renderer::section(const State &s){
   c.sectionLabel(WallpaperInfoY,"SELECTED",s.wallpaper==sel?"ACTIVE":"TAP OR ENTER TO APPLY");
   c.text(Margin+2,WallpaperInfoY+18,mm_wallpaper::list[sel].name,Font::ChatBody,FG,W-2*Margin-4);c.text(Margin+2,WallpaperInfoY+36,mm_wallpaper::list[sel].detail,Font::ChatMeta,FG,W-2*Margin-4);
   c.text(Margin+2,WallpaperInfoY+58,"Shown behind the lock clock, summit",Font::ChatMeta,FG,W-2*Margin-4);c.text(Margin+2,WallpaperInfoY+72,"in front of the digits. Sky is clear.",Font::ChatMeta,FG,W-2*Margin-4);
- }else if(s.page==Page::Info){
-  g.drawBitmap((W-mm_logo::size56)/2,Top+6,mm_logo::logo56,mm_logo::size56,mm_logo::size56,FG);// OS logo: Matterhorn + mesh route
-  c.centered(Margin,Top+68,W-2*Margin,"MATTERMESH OS",Font::Brand);c.centered(Margin,Top+94,W-2*Margin,"Version "+s.version,Font::ChatBody);
-  c.centered(Margin,Top+111,W-2*Margin,"Offline capable. Built for the field.",Font::ChatMeta);
-  c.sectionLabel(Top+132,"SYSTEM");Rect r={Margin,Top+148,W-2*Margin,Bottom-Top-148};c.card(r);
-  const char *labels[]={"MeshCore","Device","Radio","Build","Commit","Memory","Hardware"};const std::string values[]={s.meshCoreVersion,"T-Deck Max 240x320",s.radioReady?"SX1262 / MeshCore":"SX1262 / offline",s.build,s.commit,std::to_string(s.flashMB)+" MB / "+std::to_string(s.heapKB)+" KB free",s.touch&&s.keyboard&&s.hapticReady?"Touch, keys, haptic OK":std::string(s.touch?"":"touch ")+(s.keyboard?"":"keys ")+(s.hapticReady?"":"haptic ")+"missing"};
-  for(int i=0;i<7;i++){int y=r.y+4+i*15;c.text(r.x+7,y,labels[i],Font::ChatMeta);c.text(r.x+72,y,values[i],Font::ChatMeta,FG,r.w-79);}
- }else if(s.page==Page::Support){
-  // Donate / Extra apps tabs, then the QR of the selected one on a quiet zone of 2 modules and its text below. The
-  // URLs are constants: each QR is encoded once. With the Extra apps unlocked (the usual Full image) there is nothing to buy: no tabs, Donate only.
-  static std::vector<uint8_t> donateQr,unlockQr;static const int donateN=encodeQr(DonateUrl,donateQr),unlockN=encodeQr(UnlockUrl,unlockQr);
-  const bool tabs=!s.extraAppsUnlocked;const int qrY=tabs?SupportQrY:Top+8;
-  if(tabs){const char *names[]={"DONATE","EXTRA APPS"};for(int i=0;i<2;i++)c.button(supportTabRect(i),names[i],s.supportTab==i);}
-  const bool unlock=tabs&&s.supportTab==1;const std::vector<uint8_t> &modules=unlock?unlockQr:donateQr;
-  const int n=unlock?unlockN:donateN,scale=n?std::min(3,(W-2*Margin)/(n+4)):0,side=(n+4)*scale,x0=(W-side)/2,y0=qrY;
-  if(n){g.fillRect(x0,y0,side,side,BG);for(int y=0;y<n;y++)for(int x=0;x<n;x++)if(modules[y*n+x])g.fillRect(x0+(x+2)*scale,y0+(y+2)*scale,scale,scale,FG);}
-  const int w=W-2*Margin;int y=n?y0+side+8:qrY+8;
-  auto para=[&](const std::string &text,Font f,int step){for(auto &line:c.lines(text,w,f)){c.centered(Margin,y,w,line,f);y+=step;}};
-  if(unlock){para("RPT Scanner, RPT Diagnostic, RX Log, Noise Floor.",Font::ChatMeta,14);y+=4;c.centered(Margin,y,w,"Your unlock code",Font::ChatMeta);c.centered(Margin,y+15,w,s.unlockCode,Font::ChatTitle);y+=40;para("Buy on Ko-fi, then redeem at mattermeshos.com/unlock",Font::ChatMeta,14);}
-  else{para("MatterMesh OS is free. A donation of any amount on Ko-fi helps hardware and field tests.",Font::ChatMeta,14);y+=4;para("ko-fi.com/mattermeshos",Font::ChatMeta,14);}
  }else if(s.page==Page::Battery){
   c.icon(Icon::Battery,(W-32)/2,Top+10,32);c.centered(Margin,Top+50,W-2*Margin,s.status.battery<0?"--%":std::to_string(s.status.battery)+"%",Font::Clock);
   c.sectionLabel(Top+108,"DETAILS");valueCard(settingsHalf(0,Top+124),"VOLTAGE",s.voltage<0?"--":std::to_string(s.voltage)+" mV");
@@ -736,12 +714,6 @@ void Renderer::section(const State &s){
   valueCard(settingsHalf(0,Top+68),"CPU",std::to_string(s.cpuMHz)+" MHz");valueCard(settingsHalf(1,Top+68),"MESH RX / TX",std::to_string(s.radioPacketsRX)+" / "+std::to_string(s.radioPacketsTX));
   valueCard({Margin,Top+114,W-2*Margin,40},"UI / E-PAPER TIME",std::to_string(s.rasterMs)+" / "+std::to_string(s.paintMs)+" ms");
   c.sectionLabel(Top+164,"USB SERIAL");c.text(Margin+2,Top+182,"ui stats / radio status / status",Font::ChatMeta,FG,W-2*Margin);
- }else if(s.page==Page::Updates){
-  c.sectionLabel(Top+6,"INSTALLED");valueCard({Margin,Top+22,W-2*Margin,40},"VERSION",s.version+" / "+s.commit);
-  c.sectionLabel(Top+72,"UPDATE SERVER");valueCard({Margin,Top+88,W-2*Margin,40},"STATUS",s.otaStatus);
-  if(s.otaProgress>=0){Rect bar={Margin,Top+134,W-2*Margin,12};g.drawRoundRect(bar.x,bar.y,bar.w,bar.h,4,FG);int fill=std::max(4,(bar.w-4)*std::min(s.otaProgress,100)/100);g.fillRoundRect(bar.x+2,bar.y+2,fill,bar.h-4,2,FG);}
-  c.text(Margin+2,Top+152,s.otaDetail,Font::ChatMeta,FG,W-2*Margin);
-  if(!s.otaAction.empty())c.button(UpdatesAction,s.otaAction,s.otaConfirm);
  }else {
   // Every section has its own page above; anything else (a section number typed on the serial) is a blank card.
   c.icon(Icon::Tools,(W-32)/2,Top+24,32);c.centered(Margin,Top+80,W-2*Margin,"Not available",Font::Bold);

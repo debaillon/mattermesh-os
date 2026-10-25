@@ -142,7 +142,6 @@ static void composerEdited(){if(!deviceLocked&&screen==Screen::Chat&&editableFie
 static unsigned cursorAt();static void inputInsert(const String &text);volatile uint8_t touchKeyPending=0;unsigned long touchKeyEvents=0;int lastTouchKey=-1;/* set by a dictated transcript, cleared when the draft empties or the chat is left */void cancelDictation();void micInput(device::MicSource source,bool pressed);
 String messageTime(uint32_t timestamp);void enterLockMode();void exitLockMode();void updateLockScreen();void handleLockKey(bool pressed,uint32_t capturedAt=0,bool hardwareDebounced=false);void serviceWhileDisplayBusy(const void*);void pollLockKey();void initTouch();void setTouchEnabled(bool enabled);void restoreLockedCpu();
 
-int supportTab=0;// Settings > Donate / Unlock: 0 Donate, 1 Extra apps
 int launcherSelection=-1,settingsFocus=0,settingsScroll=0,filesScroll=0,filesCount=0;
 struct NavEntry{Screen screen;int section;};
 std::vector<NavEntry> navigation;
@@ -538,51 +537,18 @@ String messageTime(uint32_t timestamp){if(timestamp<MM_EPOCH_MIN)return "--:--";
  int minutes=(base+int(timestamp%3600)/60)%1440;char clock[6];snprintf(clock,sizeof(clock),"%02d:%02d",minutes/60,minutes%60);return clock;}
 void renderMenu(){auto v=uiState();mm::Renderer r(frame);r.messages(v);if(!messagesMenu){int rows=mm::ListRows-(searching?1:0),focus=0;for(unsigned i=0;i<v.conversations.size();i++)if(v.conversations[i].id==selected)focus=i;int start=focus/rows*rows;for(int i=0;i<rows&&start+i<int(v.conversations.size());i++)renderedChannels.push_back({mm::messageListRect(i,searching),v.conversations[start+i].id});}}
 void renderForm(){mm::Renderer r(frame);r.form(uiState());}
-bool otaConfirm=false;uint32_t otaBannerUntil=0;int32_t otaAnnounced=0;std::string otaBannerText;// Updates page: first Enter on INSTALL asks, the second one installs and restarts
-static std::string megabytes(uint32_t bytes){char text[16];snprintf(text,sizeof(text),"%.1f MB",bytes/1048576.0);return text;}
-void fillOta(mm::State &v){
- auto o=device::otaState();using P=device::OtaPhase;v.otaConfirm=otaConfirm&&o.phase==P::Available;v.otaProgress=-1;
- switch(o.phase){
-  case P::Idle:v.otaStatus=o.rolledBack?"Update rolled back":o.installed?"Updated / checking soon":"Not checked";v.otaDetail=o.rolledBack?"The new build crashed: old one restored":"Checked automatically on Wi-Fi";v.otaAction="CHECK NOW";break;
-  case P::Checking:v.otaStatus="Checking...";v.otaDetail="";v.otaAction="";break;
-  case P::UpToDate:v.otaStatus="Up to date";v.otaDetail="Checked "+std::to_string((millis()-o.checkedAt)/60000)+" min ago";v.otaAction="CHECK NOW";break;
-  case P::Available:v.otaStatus=std::string(o.version.c_str())+" available";v.otaDetail=o.notes.length()?o.notes.c_str():megabytes(o.size)+", signed release";v.otaAction=v.otaConfirm?"ENTER AGAIN: INSTALL + RESTART":"INSTALL "+std::string(o.version.c_str());break;
-  case P::Downloading:case P::Verifying:v.otaProgress=o.size?int(uint64_t(o.done)*100/o.size):0;v.otaStatus="Downloading "+std::to_string(v.otaProgress)+"%";v.otaDetail=megabytes(o.done)+" / "+megabytes(o.size)+", keep Wi-Fi on";v.otaAction="";break;
-  case P::Restarting:v.otaStatus="Installed / restarting";v.otaDetail=o.message.c_str();v.otaAction="";break;
-  case P::Error:v.otaStatus=o.message.c_str();v.otaDetail="";v.otaAction="CHECK AGAIN";break;
- }
-}
-// Date / time page, manual setting: day, month, year, hour, minute in local time (CET/CEST).
-bool dateEditing=false;int dateFocus=0,dateFields[5]={1,1,2026,12,0},dateTyped=0;
+// Manual time set: no UI page for this (removed from Settings), still reachable over serial
+// ("time set YYYY-MM-DD HH:MM") as a fallback when NTP/GPS sync isn't available - see dateSave() below.
+bool dateEditing=false;int dateFields[5]={1,1,2026,12,0};
 static int daysInMonth(int month,int year){static const int days[]={31,28,31,30,31,30,31,31,30,31,30,31};return month==2&&((year%4==0&&year%100!=0)||year%400==0)?29:days[(month+11)%12];}
 static int dateMin(int field){return field<=1?1:field==2?2024:0;}
 static int dateMax(int field){return field==0?daysInMonth(dateFields[1],dateFields[2]):field==1?12:field==2?2099:field==3?23:59;}
 static void dateClampDay(){dateFields[0]=constrain(dateFields[0],1,daysInMonth(dateFields[1],dateFields[2]));}
-void dateEditBegin(){
- time_t now=time(nullptr);struct tm tm;localtime_r(&now,&tm);
- if(now>=MM_EPOCH_MIN){dateFields[0]=tm.tm_mday;dateFields[1]=tm.tm_mon+1;dateFields[2]=tm.tm_year+1900;dateFields[3]=tm.tm_hour;dateFields[4]=tm.tm_min;}
- dateEditing=true;dateFocus=0;dateTyped=0;notice="";render();
-}
-void dateStep(int delta){int f=dateFocus,lo=dateMin(f),hi=dateMax(f);dateFields[f]=dateFields[f]+delta>hi?lo:dateFields[f]+delta<lo?hi:dateFields[f]+delta;dateTyped=0;dateClampDay();render();}
-void dateFocusMove(int delta){dateFocus=(dateFocus+delta+mm::DateFieldCount)%mm::DateFieldCount;dateTyped=0;render();}
-// Digits replace the field: two for day/month/hour/minute, four for the year, then focus moves on.
-void dateDigit(int digit){
- int f=dateFocus,width=f==2?4:2;int value=dateTyped?dateFields[f]*10+digit:digit;dateTyped++;
- if(dateTyped>=width){dateFields[f]=constrain(value,dateMin(f),f==0?31:dateMax(f));dateTyped=0;dateClampDay();if(dateFocus<mm::DateFieldCount-1)dateFocus++;}
- else dateFields[f]=value;
- render();
-}
 void dateSave(){
- dateClampDay();for(int f=0;f<mm::DateFieldCount;f++)dateFields[f]=constrain(dateFields[f],dateMin(f),dateMax(f));
+ dateClampDay();for(int f=0;f<5;f++)dateFields[f]=constrain(dateFields[f],dateMin(f),dateMax(f));
  struct tm tm={};tm.tm_mday=dateFields[0];tm.tm_mon=dateFields[1]-1;tm.tm_year=dateFields[2]-1900;tm.tm_hour=dateFields[3];tm.tm_min=dateFields[4];tm.tm_isdst=-1;
  time_t epoch=mktime(&tm);bool ok=epoch>0&&device::timeSyncManual(uint32_t(epoch));
  notice=ok?"Date and time set":"Date not valid";if(ok)dateEditing=false;lockScreenDirty=true;render();
-}
-// Enter / tap on the Updates button: check, then a two-step install.
-void otaAction(){
- auto phase=device::otaState().phase;using P=device::OtaPhase;
- if(phase==P::Available){if(!otaConfirm){otaConfirm=true;render();return;}otaConfirm=false;notice=device::otaInstall()?"":"Install could not start";render();return;}
- if(phase!=P::Checking&&phase!=P::Downloading&&phase!=P::Restarting){otaConfirm=false;device::otaCheck();render();}
 }
 // Home / Chats rows (filtered by the Chats search), without building a whole uiState().
 std::vector<mm::Conversation> conversationList(){std::vector<mm::Conversation> out;time_t now=time(nullptr);for(int i=0;i<chatCount;i++){
@@ -590,7 +556,7 @@ std::vector<mm::Conversation> conversationList(){std::vector<mm::Conversation> o
   mm::Conversation c;c.name=chats[i].name.c_str();c.scope=chats[i].scope.c_str();c.direct=chats[i].direct;c.id=i;c.unread=unreadMessages[i];c.preview="No messages";if(auto s=radioJournal.summary(i))if(s->total){auto &r=s->last;c.preview=r.body.c_str();c.sender=r.mine?"YOU":r.sender.c_str();c.time=messageTime(r.timestamp).c_str();c.activity=1+int(s->order);if(now>=MM_EPOCH_MIN&&r.timestamp>=MM_EPOCH_MIN&&r.timestamp<=uint32_t(now)){uint32_t minutes=(uint32_t(now)-r.timestamp)/60;c.age=minutes<60?std::to_string(minutes)+"m":minutes<1440?std::to_string(minutes/60)+"h":std::to_string(minutes/1440)+"d";}}out.push_back(c);}return out;}
 mm::State uiState(){
  auto audio=device::audioState();
- mm::State v;v.extraAppsUnlocked=device::otaAppsUnlocked();if(screen==Screen::Section&&section==mm::SupportSection){static String code=device::otaUnlockCode();v.unlockCode=code.c_str();v.supportTab=supportTab;}if(screen==Screen::Section&&section==17)fillOta(v);if(screen==Screen::Section&&section==14)appLinkFill(v);v.quickPending=quickReply.pending;v.quickSent=quickReply.sent;v.antennaConfirm=antennaConfirm;v.shutdownConfirm=shutdownConfirm;auto timeState=device::timeSyncState();if(screen==Screen::Section&&section==mm::QuickSettingsSection){auto source=device::batteryPowerSource();v.usbPower=source==device::PowerSource::USB;v.powerSourceKnown=source!=device::PowerSource::Unknown;}if(screen==Screen::Section&&section==24&&sdReady){v.storageTotal=SD.totalBytes();v.storageUsed=SD.usedBytes();}v.emojiPicker=emojiPicker;v.emojiFocus=emojiFocus;v.emojiTab=emojiTab;if(emojiPicker){if(emojiRecent.empty())emojiItems();v.emojiRecent=emojiRecent;}v.receivedChannel=lastReceivedChannel.c_str();v.audioReady=audio.ready;v.audioNotifications=audio.notifications;v.audioVolume=audio.volume;v.messageTone=device::RINGTONES[device::ringtoneIndex(audio.messageTone)].name;v.mentionTone=device::RINGTONES[device::ringtoneIndex(audio.mentionTone)].name;v.audioRecording=audio.recording;v.audioWarming=audio.warming;v.audioSeconds=std::min<int>(device::DICTATION_MAX_SECONDS,audio.samples/device::DICTATION_RATE);v.audioTranscribing=audio.transcribing;v.audioMessage=audio.message.c_str();v.dictationConfigured=audio.dictationConfigured;v.unlockTapCount=unlockTaps.taps;v.scopePicker=scopePicker;v.scopeEditing=scopeEditing;v.clearChatConfirm=clearChatConfirm;v.chatMenuFocus=chatMenuFocus;v.scopeFocus=scopeFocus;v.scopeOffset=scopeFocus/mm::ScopeRows*mm::ScopeRows;v.scopeInput=scopeInput.c_str();if(scopePicker&&!deviceLocked)v.regionScopes=regionScopes;v.receivedName=lastReceivedSender.c_str();v.receivedPreview=lastReceivedBody.c_str();v.receivedTime=lastReceivedTime.c_str();v.lockHasMessage=lastReceivedToken!=0;v.lockHint=lockHintUntil&&int32_t(lockHintUntil-millis())>0;v.unlockCounting=unlockCountdownAt!=0;
+ mm::State v;if(screen==Screen::Section&&section==14)appLinkFill(v);v.quickPending=quickReply.pending;v.quickSent=quickReply.sent;v.antennaConfirm=antennaConfirm;v.shutdownConfirm=shutdownConfirm;auto timeState=device::timeSyncState();if(screen==Screen::Section&&section==mm::QuickSettingsSection){auto source=device::batteryPowerSource();v.usbPower=source==device::PowerSource::USB;v.powerSourceKnown=source!=device::PowerSource::Unknown;}if(screen==Screen::Section&&section==24&&sdReady){v.storageTotal=SD.totalBytes();v.storageUsed=SD.usedBytes();}v.emojiPicker=emojiPicker;v.emojiFocus=emojiFocus;v.emojiTab=emojiTab;if(emojiPicker){if(emojiRecent.empty())emojiItems();v.emojiRecent=emojiRecent;}v.receivedChannel=lastReceivedChannel.c_str();v.audioReady=audio.ready;v.audioNotifications=audio.notifications;v.audioVolume=audio.volume;v.messageTone=device::RINGTONES[device::ringtoneIndex(audio.messageTone)].name;v.mentionTone=device::RINGTONES[device::ringtoneIndex(audio.mentionTone)].name;v.audioRecording=audio.recording;v.audioWarming=audio.warming;v.audioSeconds=std::min<int>(device::DICTATION_MAX_SECONDS,audio.samples/device::DICTATION_RATE);v.audioTranscribing=audio.transcribing;v.audioMessage=audio.message.c_str();v.dictationConfigured=audio.dictationConfigured;v.unlockTapCount=unlockTaps.taps;v.scopePicker=scopePicker;v.scopeEditing=scopeEditing;v.clearChatConfirm=clearChatConfirm;v.chatMenuFocus=chatMenuFocus;v.scopeFocus=scopeFocus;v.scopeOffset=scopeFocus/mm::ScopeRows*mm::ScopeRows;v.scopeInput=scopeInput.c_str();if(scopePicker&&!deviceLocked)v.regionScopes=regionScopes;v.receivedName=lastReceivedSender.c_str();v.receivedPreview=lastReceivedBody.c_str();v.receivedTime=lastReceivedTime.c_str();v.lockHasMessage=lastReceivedToken!=0;v.lockHint=lockHintUntil&&int32_t(lockHintUntil-millis())>0;v.unlockCounting=unlockCountdownAt!=0;
  std::string lockRxHash;if(deviceLocked){v.lockHasMessage=false;matter::Record r;if(loadedRecord(lockMessages.current,r)&&!r.mine){v.lockHasMessage=true;v.receivedHops=r.hops;v.receivedName=r.sender.c_str();v.receivedPreview=r.body.c_str();v.receivedTime=messageTime(r.timestamp).c_str();v.receivedChannel=r.chat>=0&&r.chat<chatCount?chats[r.chat].name.c_str():"Mesh messages";lockRxHash=device::incomingRepeater(r.path.c_str());}}
  auto repeaterLabel=[&](const std::string &hash){int matches=0;String name=matter::nodeNameForPrefix(hash.c_str(),matches,2);return matches==1&&!name.isEmpty()?mm::senderDisplayName(name.c_str()):"["+hash+"]";};auto incomingLabel=[&](){return repeaterLabel(receivedRepeater.hash);};
  if(deviceLocked&&!lockRxHash.empty()&&uint32_t(millis()-lockMessageShownAt)<device::LOCK_RX_REPEATER_MS)v.lockRepeater="Received via: "+repeaterLabel(lockRxHash);for(auto n:unreadMessages)v.unread+=n;v.status.unread=v.unread;v.cpuMHz=getCpuFrequencyMhz();{static uint32_t diagAt=0;static UBaseType_t stack=0;static uint32_t heapKB=0,flashMB=0;if(!diagAt||millis()-diagAt>=1000){diagAt=millis()|1;stack=uxTaskGetStackHighWaterMark(nullptr);heapKB=ESP.getFreeHeap()/1024;flashMB=ESP.getFlashChipSize()/1048576;}/* stack scan and heap walk once a second, not per frame */v.stackFree=stack;v.heapKB=heapKB;v.flashMB=flashMB;}v.rasterMs=lastRasterMs;v.paintMs=lastPaintMs;v.sd=sdReady;v.touch=touchBackend;v.keyboard=keyboardReady;v.haptic=hapticEnabled;v.vibrationPercent=vibrationPercent;v.messageVibration=device::VIBRATIONS[messageVibration].name;v.mentionVibration=device::VIBRATIONS[mentionVibration].name;v.hapticReady=hapticReady;
@@ -638,7 +604,7 @@ v.radioRX=radio.rx;v.radioTX=radio.tx;v.radioError=radio.error;v.radioFrequency=
  if(!deviceLocked&&screen==Screen::Section&&section==4)for(auto &network:device::connectivityState().networks){mm::State::Network n;n.ssid=network.ssid.c_str();n.rssi=network.rssi;n.secured=network.protectedNetwork;n.saved=network.saved;v.networks.push_back(n);}
  if(!deviceLocked&&screen==Screen::Section&&section==10){// only the Weather page draws these
  auto weather=device::weatherState();v.weatherValid=weather.data.valid;v.weatherBusy=weather.busy;v.weatherFahrenheit=weather.data.fahrenheit;auto toDisplay=[&](float celsius){return weather.data.fahrenheit?celsius*9.0f/5.0f+32.0f:celsius;};v.temperature=toDisplay(weather.data.temperature);v.humidity=weather.data.humidity;v.pressure=weather.data.pressure;v.wind=weather.data.wind;v.high=toDisplay(weather.data.high);v.low=toDisplay(weather.data.low);v.weatherCode=weather.data.code;v.weatherText=weather.data.valid?device::weatherDescription(weather.data.code):"No weather data";v.weatherUpdated=weather.data.stamp;v.weatherPlace=weather.place.c_str();v.weatherMessage=weather.message.c_str();v.weatherPhase=mm::WeatherPhaseView(int(weather.phase));v.weatherSource=device::weatherSourceLabel(weather.data.source);v.weatherNext=weather.nextRefresh;v.apparent=toDisplay(weather.data.apparent);v.precipitation=weather.data.precipitation;v.weatherHours=weather.data.hours;for(int i=0;i<device::WeatherHours&&i<4;i++){v.weatherHourCode[i]=weather.data.hourCode[i];v.weatherHourTemp[i]=toDisplay(weather.data.hourTemp[i]);v.weatherHourTime[i]=weather.data.hourTime[i];}}
- auto location=device::locationState();v.locationValid=location.configured;v.latitude=location.latitude;v.longitude=location.longitude;v.gpsData=location.data;v.gpsNmeaFresh=location.nmeaFresh;v.gpsTimeValid=location.timeValid;v.gpsTemporary=location.timeLease&&!location.userEnabled;v.gpsUsed=location.satellitesUsed;v.gpsVisible=location.satellitesVisible;v.gpsBaud=location.baud;v.gpsFix=location.fix;v.gpsEnabled=location.enabled;v.gpsAvailable=location.available;v.status.gps=location.enabled&&location.available;v.status.acquiringTime=timeState.acquiring&&(location.enabled||connection.connected);v.altitude=location.altitude;v.satellites=location.satellites;
+ auto location=device::locationState();v.locationValid=location.configured;v.latitude=location.latitude;v.longitude=location.longitude;v.gpsData=location.data;v.gpsNmeaFresh=location.nmeaFresh;v.gpsTimeValid=location.timeValid;v.gpsTemporary=location.timeLease&&!location.userEnabled;v.gpsUsed=location.satellitesUsed;v.gpsVisible=location.satellitesVisible;v.gpsBaud=location.baud;v.gpsFix=location.fix;v.gpsEnabled=location.enabled;v.gpsAvailable=location.available;v.status.gps=location.enabled&&location.available;v.status.acquiringTime=timeState.acquiring&&(location.enabled||connection.connected);v.timeSyncBusy=timeState.acquiring;v.altitude=location.altitude;v.satellites=location.satellites;
  v.wallpaper=lockWallpaper;v.wallpaperFocus=wallpaperFocus;v.kbdQuery=kbdQuery.c_str();v.kbdSearching=kbdSearching;v.kbdFocus=kbdFocus;v.kbdLang=int(kbdLang);v.kbdMask=kbdMask;if(mm_kbd::enabledCount(kbdMask)>1)v.status.keyboard=mm_kbd::info(kbdLang).code;auto power=device::powerState();v.keyboardLightEnabled=power.keyboardEnabled;v.keyboardTimeout=power.keyboardSeconds;
  time_t now=time(nullptr);if(now>=MM_EPOCH_MIN){/* localtime + 3 strftime only when the minute changes (~150 us each frame otherwise) */static time_t shownMinute=-1;static std::string clockText,dateText,menuDateText;if(now/60!=shownMinute){shownMinute=now/60;struct tm tm;localtime_r(&now,&tm);char clock[6],date[30],menuDate[20];strftime(clock,sizeof(clock),"%H:%M",&tm);strftime(date,sizeof(date),"%a, %b %d, %Y",&tm);strftime(menuDate,sizeof(menuDate),"%a, %b %d",&tm);clockText=clock;dateText=date;menuDateText=menuDate;}v.menuDate=menuDateText;v.status.clock=clockText;v.date=dateText;}
  if(!deviceLocked&&(screen==Screen::Home||screen==Screen::Chats))v.conversations=conversationList();
@@ -694,8 +660,7 @@ void confirmShutdown(){
 void loadRadioDraft(bool keepSelection);
 void openSection(int id,bool paint){
  cancelDictation();
- if(id==mm::SupportSection)supportTab=0;// Settings > Donate / Unlock opens on Donate
- antennaConfirm=shutdownConfirm=otaConfirm=dateEditing=false;emojiPicker=false;scopePicker=scopeEditing=clearChatConfirm=channelOptions=deleteChannelConfirm=positionShare=false;
+ antennaConfirm=shutdownConfirm=dateEditing=false;emojiPicker=false;scopePicker=scopeEditing=clearChatConfirm=channelOptions=deleteChannelConfirm=positionShare=false;
  if(navigation.size()<16)navigation.push_back({screen,section});
  section=constrain(id,0,mm::MaxSection);notice="";if(section==1){contactSearching=false;contactQuery="";contactFocus=nodeScroll=0;}if(section==22)wallpaperFocus=lockWallpaper;if(section==mm::KeyboardSection){kbdQuery="";kbdSearching=false;kbdFocus=0;}if(section==mm::AccentKeySection)accentFocus=accentMode;if(section==9)mapOpen();if(section==mm::MusicSection)musicAppOpen();if(section==mm::BooksSection)booksAppOpen();if(mm::toolsSection(section))toolsOpen(section);
  radioPowerEditing=false;radioDevicePage=false;radioDeviceFocus=0;if(section==2)loadRadioDraft(false);
@@ -731,7 +696,6 @@ void render(int batteryPreview) {
   if(inputBannerUntil&&int32_t(inputBannerUntil-millis())>0)renderer.holdBanner(inputBanner.c_str());
   else if(screen==Screen::Chat&&chatErrorUntil&&int32_t(chatErrorUntil-millis())>0){frame.fillRect(0,mm::StatusH,mm::W,mm::HeaderH,mm::BG);mm::Components c(frame);c.text(mm::Margin,mm::StatusH+9,chatError.c_str(),mm::Font::ChatMeta,mm::FG,mm::W-2*mm::Margin);}
   else if(incomingBanner.active&&!(screen==Screen::Chat&&activeChat==incomingBanner.chat))renderer.messageBanner(incomingBanner.sender,incomingBanner.body);
-  else if(otaBannerUntil&&int32_t(otaBannerUntil-millis())>0)renderer.messageBanner("Update available",otaBannerText);
  }
  // USB-only single-frame preview: never changes battery state or calibration.
  if(batteryPreview>=-1&&batteryPreview<=100){auto status=uiState().status;status.battery=batteryPreview;mm::Components components(frame);components.statusBar(status);}
@@ -1042,14 +1006,13 @@ void key(char c) {
    else if(c=='a')back();else if(c=='d'||c=='\n')activateRadioFocus();else if(c=='b')selectRadioBand(radioBandSelection==868?900:868);else if(c=='p')editRadioPower();return;
   }
   if(!editableField()){if(c=='a'){back();return;}if(section==19&&c=='d')c='\n';if(section!=4){if(c=='w')c='k';else if(c=='s')c='j';}}
+  if(section==3&&c=='t'){device::timeSyncRequest();notice="Time sync requested";render();return;}
   if(section==3&&(c=='\n'||c==' ')){notice=device::locationToggleUser()?(device::locationState().enabled?"GPS enabled":"GPS disabled"):"GPS switch failed";render();return;}
-  if(section==17){if(otaConfirm&&c=='n'){otaConfirm=false;render();}else if(c=='\n'||(otaConfirm&&c=='y'))otaAction();return;}
   if(section==23){if(antennaConfirm&&(c=='n'||c=='y')){if(c=='y')confirmAntenna();else{antennaConfirm=false;render();}}else if(c=='\n'){if(antennaConfirm)confirmAntenna();else requestAntenna(!matter::snapshot().internal);}else if(c=='i')requestAntenna(true);else if(c=='e')requestAntenna(false);return;}
   if(section==2&&radioPowerEditing){if(c=='\n'){saveRadioPower();return;}if(radioEditField==CompanionNameField){if(c>=32&&c<=126&&radioPowerInput.length()<matter::COMPANION_NAME_MAX_BYTES)radioPowerInput+=c;}else if(((c>='0'&&c<='9')||c=='-'||c=='+'||c=='.')&&radioPowerInput.length()<12)radioPowerInput+=c;notice="";repaintSettled();return;}
   if(section==6&&(c=='m'||c=='r'||c=='t')){if(c=='t')messageHaptic(true);else cycleVibration(c=='r',1);render();return;}
   if(section==21){if(c=='h'){openSection(6);return;}else if(c=='n')device::audioNotifications(!device::audioState().notifications);else if(c=='t'||c=='\n')device::audioNotify(true);else if(c=='m'||c=='r')cycleRingtone(c=='r',1);else if(c=='j'||c=='k')device::audioVolume(device::audioState().volume+(c=='j'?5:-5));render();return;}
   if(section==4&&wifiEditing){if(c=='\n'){if(wifiEditField==0)wifiEditField=1;else{connectWifi();return;}}else if(c=='\t')wifiEditField=1-wifiEditField;else if(c>=32&&c<=126){String &field=wifiEditField==0?wifiTarget:wifiPassword;if(field.length()<(wifiEditField==0?32:63))field+=c;}repaintSettled();return;}
-  if(section==mm::SupportSection){if(!device::otaAppsUnlocked()&&(c=='j'||c=='k'||c=='h'||c=='l'||c=='d'||c=='\n'||c==' ')){supportTab=1-supportTab;render();}return;}// unlocked Full: Donate only, no tabs
   if(section==mm::AccentKeySection){if(c=='k'&&accentFocus>0){accentFocus--;notice="";render();return;}if(c=='j'&&accentFocus<2){accentFocus++;notice="";render();return;}
    if(c=='\n'||c==' '){bool ok=setAccentMode(accentFocus);if(!ok)accentFocus=accentMode;notice=ok?"Saved":"Save failed";render();}return;}
   if(section==mm::KeyboardSection){auto rows=keyboardLanguageRows();
@@ -1184,11 +1147,10 @@ void tap(int x,int y) {
   if(section==mm::MusicSection){if(musicAppTap(x,y))return;return;}
   if(section==mm::BooksSection){if(booksAppTap(x,y))return;return;}
   if(section==mm::QuickSettingsSection){quickSettingsTap(x,y);return;}
-  if(section==17&&mm::UpdatesAction.contains(x,y)){otaAction();return;}
   if(section==3&&mm::GpsToggle.contains(x,y)){notice=device::locationToggleUser()?(device::locationState().enabled?"GPS enabled":"GPS disabled"):"GPS switch failed";render();return;}
+  if(section==3&&mm::GpsTimeSync.contains(x,y)){device::timeSyncRequest();notice="Time sync requested";render();return;}
   if(section==21){if(mm::AudioNotify.contains(x,y))device::audioNotifications(!device::audioState().notifications);else if(mm::AudioToneMessage.contains(x,y)||mm::AudioToneMention.contains(x,y)){bool mention=mm::AudioToneMention.contains(x,y);cycleRingtone(mention,mm::stepRowTap(mm::AudioToneMessage,x));}else if(mm::AudioMinus.contains(x,y))device::audioVolume(device::audioState().volume-5);else if(mm::AudioPlus.contains(x,y))device::audioVolume(device::audioState().volume+5);else if(mm::AudioSlider.contains(x,y)){int track=mm::AudioSlider.w-16;device::audioVolume((constrain(x-mm::AudioSlider.x-8,0,track)*20+track/2)/track*5);}render();return;}
   if(section==23){if(antennaConfirm){if(mm::ConfirmYes.contains(x,y))confirmAntenna();else if(mm::ConfirmNo.contains(x,y)){antennaConfirm=false;render();}}else if(mm::AntennaInternal.contains(x,y))requestAntenna(true);else if(mm::AntennaExternal.contains(x,y))requestAntenna(false);return;}
-  if(section==mm::SupportSection){if(!device::otaAppsUnlocked())for(int i=0;i<2;i++)if(mm::supportTabRect(i).contains(x,y)&&supportTab!=i){supportTab=i;render();}return;}
   if(section==mm::AccentKeySection){for(int i=0;i<3;i++)if(mm::accentRowRect(i).contains(x,y)){bool ok=setAccentMode(i);accentFocus=ok?i:accentMode;notice=ok?"Saved":"Save failed";render();return;}return;}
   if(section==mm::KeyboardSection){if(mm::KeyboardSearch.contains(x,y)){kbdSearching=true;render();return;}
    auto rows=keyboardLanguageRows();int first=std::max(0,std::min(kbdFocus,int(rows.size())-1)-mm::KeyboardRows+1);
@@ -1866,11 +1828,6 @@ void loop(){
  matter::loop();hapticLoop();device::audioLoop();device::musicLoop();
  if(!deviceLocked&&screen==Screen::Chat&&archivePager.poll(radioJournal)){chatRowsRevision++;repaintNow();}
  if(deviceLocked)incomingBanner.clear();else if(incomingBanner.expire(millis())){repaintNow();}
- // OTA: repaint Settings / Updates on progress; a newly offered release shows a banner once per boot.
- {static uint32_t otaSeen=0;static bool lockedSeen=false;auto revision=device::otaRevision();if(revision!=otaSeen||deviceLocked!=lockedSeen){otaSeen=revision;lockedSeen=deviceLocked;auto o=device::otaState();
-  if(!deviceLocked&&screen==Screen::Section&&(section==17||section==19)){markRadioDirty();}
-  if(o.phase==device::OtaPhase::Available&&o.code!=otaAnnounced&&!deviceLocked){otaAnnounced=o.code;otaBannerText=std::string("MatterMesh ")+o.version.c_str()+" / Settings > OTA update";otaBannerUntil=millis()+6000;if(!(screen==Screen::Section&&section==17)){repaintNow();}else otaBannerUntil=0;}/* found while locked: shown after the unlock */}
-  if(otaBannerUntil&&int32_t(otaBannerUntil-millis())<=0){otaBannerUntil=0;if(!deviceLocked){repaintNow();}}}
  static uint32_t audioRevision=0;auto nextAudioRevision=device::audioRevision();if(nextAudioRevision!=audioRevision){audioRevision=nextAudioRevision;auto audio=device::audioState();if(!deviceLocked){bool visibleAudio=(screen==Screen::Section&&section==21)||dictationChat>=0;if(visibleAudio){notice=audio.message;if(screen==Screen::Chat&&!audio.busy){chatToast(audio.message,6000);}repaintSettled();}String dictated;if(device::takeTranscript(dictated)&&screen==Screen::Chat&&activeChat==dictationChat){bool trimmed=false;input=device::appendDictation(input.c_str(),dictated.c_str(),messageByteLimit(),trimmed).c_str();composerExpanded=true;if(trimmed)notice=(String("Dictation trimmed / ")+String(messageByteLimit())+"-byte limit");}if(!audio.busy){if(dictationChat>=0)device::activity();dictationChat=-1;dictationDraft="";}}}
  // Recording counter 0..6 s: repaint the composer once per elapsed second.
  // (the full audio state, Strings included, is copied only while a dictation chat is open)

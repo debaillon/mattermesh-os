@@ -31,7 +31,7 @@ struct State {
  int welcomeWifiChoice=0,welcomeStep=0,welcomeBand=868,welcomeFocus=0,welcomeScroll=0,welcomeBytes=2;std::string welcomeName,welcomePreset,welcomeArchive;std::vector<std::pair<std::string,std::string>> welcomePresets;
  int wifiOffset=0,wifiFocus=0;std::string wifiSSID,wifiIP,wifiMessage,wifiPasswordMask;struct Network{std::string ssid;int rssi=0;bool secured=true,saved=false;};std::vector<Network> networks;
  bool weatherValid=false,weatherBusy=false,locationValid=false,gpsFix=false;
- bool gpsEnabled=true,gpsAvailable=false,gpsData=false,gpsNmeaFresh=false,gpsTimeValid=false,gpsTemporary=false;unsigned gpsUsed=0,gpsVisible=0,gpsBaud=0;
+ bool gpsEnabled=true,gpsAvailable=false,gpsData=false,gpsNmeaFresh=false,gpsTimeValid=false,gpsTemporary=false,timeSyncBusy=false;unsigned gpsUsed=0,gpsVisible=0,gpsBaud=0;
  float temperature=0,humidity=0,pressure=0,wind=0,high=0,low=0;int weatherCode=2;double latitude=0,longitude=0,altitude=0;int satellites=0;
  std::string weatherText="No weather data",weatherUpdated,weatherMessage,weatherPlace,weatherSource;
  WeatherPhaseView weatherPhase=WeatherPhaseView::Closed;int weatherNext=0,weatherHours=0;float apparent=0,precipitation=0;int weatherHourCode[4]={};float weatherHourTemp[4]={};std::string weatherHourTime[4];bool weatherFahrenheit=false;
@@ -42,8 +42,7 @@ bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
  std::string messageTone="Classic",mentionTone="Rising",messageVibration="Single",mentionVibration="Double";
  std::string menuDate="Date not set",date="DATE NOT SET",notice,version="",build="",commit="local",input;
  bool antennaConfirm=false,shutdownConfirm=false,usbPower=false,powerSourceKnown=false;
- // Updates page (section 17): texts from device::otaState(); otaProgress -1 = no download bar.
- std::string otaStatus="Not checked",otaDetail,otaAction="CHECK NOW";/* the server address is never shown */int otaProgress=-1;bool otaConfirm=false;uint64_t storageTotal=0,storageUsed=0;
+ uint64_t storageTotal=0,storageUsed=0;
  bool emojiPicker=false;int emojiFocus=0,emojiTab=0;bool composerExpanded=false;/* any draft: the composer grows upward so every line can be proofread */size_t inputCursor=std::string::npos;/* byte offset of the caret in input; npos = end */std::vector<int> emojiRecent;std::string receivedChannel="Mesh messages";
  bool quickSent=false;int receivedHops=-1;
  int unread=0;std::string receivedName="No messages",receivedPreview="Waiting for mesh messages",receivedTime="--:--";
@@ -56,7 +55,6 @@ bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
  bool channelOptions=false,deleteChannelConfirm=false,channelOptionMuted=false,channelOptionDirect=false,positionShare=false;
  int channelOptionFocus=0;std::string channelOptionName,positionCoordinates,positionMessage;
  std::vector<ContactRow> pickerRows;int pickerFocus=0,pickerTotal=0,pickerStart=0;bool pickerSearching=false;std::string pickerQuery;
- bool extraAppsUnlocked=false;std::string unlockCode;int supportTab=0;// Settings > Donate / Unlock: 0 Donate, 1 Extra apps (QR + unlock code)
  bool channelKeyView=false;std::string channelKeyHex,channelKeyScope;int qrSize=0;std::vector<uint8_t> qrModules;
  // -2: infer from the complete thread; -1: latest own message is filtered out.
  int latestOwnMessage=-2;

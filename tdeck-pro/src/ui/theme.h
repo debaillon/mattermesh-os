@@ -49,7 +49,7 @@ constexpr Rect EmojiPopup={Margin,ComposerY-198,W-2*Margin,196};
 constexpr Rect emojiTabRect(int index){return {EmojiPopup.x+4+index*36,EmojiPopup.y+4,34,26};}
 constexpr Rect emojiChoiceRect(int index){return {EmojiPopup.x+4+(index%6)*36,EmojiPopup.y+34+(index/6)*36,34,34};}
 constexpr Rect ChatMenu={W-32,StatusH,32,HeaderH};
-constexpr int SettingsCount=17,SettingsRowH=36,SettingsDeviceFirst=5,SettingsSystemFirst=12;
+constexpr int SettingsCount=14,SettingsRowH=36,SettingsDeviceFirst=5,SettingsSystemFirst=12;
 constexpr int SettingsGpsIndex=4;
 // Settings scroll by whole rows: scroll = first visible row, its group label above it
 // when it opens a group. Rows outside the viewport get a y off screen and are not drawn.
@@ -64,18 +64,13 @@ inline int settingsLastVisible(int scroll){int i=scroll;while(i+1<SettingsCount&
 constexpr Rect SettingsSwitch={Margin,Top+6,W-2*Margin,40};
 constexpr int SettingsSectionY=Top+54,SettingsBodyY=Top+70;
 inline Rect settingsHalf(int column,int y,int h=40){return {column?W/2+3:Margin,y,(W-2*Margin-6)/2,h};}
-// Settings > Donate / Unlock (section 31, between OTA update and About): Donate / Extra apps tabs and the QR of the
-// selected one, the text below it.
-constexpr int SupportSection=31,SupportQrY=Top+42;
-inline Rect supportTabRect(int i){return settingsHalf(i,Top+6,28);}
 constexpr Rect GpsToggle=SettingsSwitch;
-constexpr Rect UpdatesAction={Margin,Top+200,W-2*Margin,34};
-// Date / time: SET MANUALLY, then fields day/month/year on one row and hour/minute below, -/+ and SAVE/CANCEL.
-constexpr Rect DateManual={Margin,Top+210,W-2*Margin,34};
-constexpr int DateFieldCount=5;
-constexpr Rect dateFieldRect(int i){return i==0?Rect{Margin,Top+22,60,34}:i==1?Rect{Margin+66,Top+22,60,34}:i==2?Rect{Margin+132,Top+22,W-2*Margin-132,34}:i==3?Rect{Margin,Top+82,(W-2*Margin-6)/2,34}:Rect{W/2+3,Top+82,(W-2*Margin-6)/2,34};}
-constexpr Rect DateMinus={Margin,Top+128,(W-2*Margin-6)/2,34},DatePlus={W/2+3,Top+128,(W-2*Margin-6)/2,34};
-constexpr Rect DateSave={Margin,Top+210,(W-2*Margin-6)/2,34},DateCancel={W/2+3,Top+210,(W-2*Margin-6)/2,34};
+// Forces a fresh Wi-Fi/GPS time sync attempt (device::timeSyncRequest()) - manual time set itself only
+// exists over serial now (see main.cpp's dateSave()), this is the UI affordance for the automatic path.
+constexpr Rect GpsTimeSync={Margin,Top+232,W-2*Margin,30};
+// No Settings entry or page render for this anymore (the Donate/Unlock page was removed); the id itself
+// stays since sectionPage()'s switch still maps it, matching how DateTime/Updates/Info are left in place too.
+constexpr int SupportSection=31;
 inline int settingsMaxScroll(){int first=0;while(!settingsVisible(SettingsCount-1,first))first++;return first;}
 // One page down starts at the row after the last visible one; one page up ends just above the current first row.
 inline int settingsPage(int scroll,bool down){if(down)return std::min(settingsMaxScroll(),settingsLastVisible(scroll)+1);int first=scroll;while(first>0&&settingsLastVisible(first-1)>=scroll-1)first--;return first;}
