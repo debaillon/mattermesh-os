@@ -21,7 +21,7 @@ struct State {
  std::string firstRepeater;
  int vibrationPercent=75;
  bool keyboardLightEnabled=true;
- bool audioTranscribing=false,offlineEngineCompiled=false;int audioSeconds=0;bool audioReady=false,audioNotifications=true,audioRecording=false,audioWarming=false,dictationConfigured=false;int audioVolume=20;std::string audioMessage;
+ bool audioTranscribing=false;int audioSeconds=0;bool audioReady=false,audioNotifications=true,audioRecording=false,audioWarming=false,dictationConfigured=false;int audioVolume=20;std::string audioMessage;
  Page page=Page::Home;Status status;
  // MeshCore app link: BLE name / PIN, Wi-Fi (TCP 5000) switch and address, which links are in use.
  std::string appBleName,appPin,appWifiDetail,appBleInput;bool appBleEditing=false,appWifi=false,appBleLinked=false,appUsbLinked=false,appWifiLinked=false;

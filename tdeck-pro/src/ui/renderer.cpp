@@ -438,7 +438,7 @@ void Renderer::settings(const State &s){
    case 22:return std::string("Lock screen: ")+mm_wallpaper::list[s.wallpaper>=0&&s.wallpaper<mm_wallpaper::count?s.wallpaper:0].name;
    case KeyboardSection:{std::string codes;for(auto l:mm_kbd::Order)if(s.kbdMask&(1u<<int(l))){if(!codes.empty())codes+=" ";codes+=mm_kbd::info(l).code;}return mm_kbd::enabledCount(s.kbdMask)>1?codes+" (Alt + Space)":"Typing: "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).name);}
    case AccentKeySection:return s.accentMode==1?"Right Shift":s.accentMode==2?"Left Shift":"Off";
-   case 21:return "Speaker / microphone";case 20:return "Light timers / auto lock";case 5:return s.status.battery<0?"--%":std::to_string(s.status.battery)+"%";
+   case 21:return "Volume / notification sounds";case 20:return "Light timers / auto lock";case 5:return s.status.battery<0?"--%":std::to_string(s.status.battery)+"%";
    case 24:return s.sd?"SD available":"No SD";case 11:return "USB diagnostics";case 17:return "Update your firmware";
    case SupportSection:return s.extraAppsUnlocked?"Support the project":"Support the project, Extra apps";default:return "Version "+s.version;}};
   std::string detail=detailFor(SettingsItems[i].section);
@@ -452,7 +452,7 @@ void Renderer::settings(const State &s){
 }
 void Renderer::section(const State &s){
  const char *title="MatterMesh OS";
- switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;case Page::Music:title="Music";break;case Page::Books:title=s.epubOpen?s.epubTitle.c_str():"Books";break;default:break;}
+ switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;case Page::Music:title="Music";break;case Page::Books:title=s.epubOpen?s.epubTitle.c_str():"Books";break;default:break;}
  if(s.page==Page::Maps){g.fillScreen(BG);c.statusBar(s.status);}else{shell(s,title);g.fillRect(W-32,StatusH,32,HeaderH-1,BG);}// Maps: no header, the map takes the page
  auto valueCard=[&](Rect r,const std::string &label,const std::string &value){c.card(r);c.text(r.x+7,r.y+4,label,Font::ChatMeta);c.text(r.x+7,r.y+20,value,Font::Bold,FG,r.w-14);};
  auto gb=[](uint64_t bytes){char text[16];if(bytes<1073741824ull)snprintf(text,sizeof(text),"%u MB",unsigned(bytes/1048576));else snprintf(text,sizeof(text),"%.1f GB",bytes/1073741824.0);return std::string(text);};
@@ -628,8 +628,6 @@ void Renderer::section(const State &s){
   auto tone=[&](Rect r,Icon id,const char *label,const std::string &name){c.card(r);c.icon(id,r.x+6,r.y+(r.h-24)/2,24);c.text(r.x+36,r.y+3,label,Font::ChatMeta,FG,r.w-40);
    c.text(r.x+36,r.y+17,name,Font::Bold,FG,r.w-80);c.icon(Icon::Back,r.x+r.w-44,r.y+(r.h-12)/2,12);c.icon(Icon::ChevronRight,r.x+r.w-20,r.y+(r.h-12)/2,12);};
   tone(AudioToneMessage,Icon::Messages,"New message",s.messageTone);tone(AudioToneMention,Icon::Contacts,"Mention @you",s.mentionTone);
-  c.sectionLabel(AudioBackend.y-16,"DICTATION");c.card(AudioBackend);c.text(AudioBackend.x+7,AudioBackend.y+3,"Offline, Italian",Font::ChatBody,FG,AudioBackend.w-14);
-  c.text(AudioBackend.x+7,AudioBackend.y+19,s.offlineEngineCompiled?"Hold MIC, release to transcribe":"Model support not compiled",Font::ChatMeta,FG,AudioBackend.w-14);
  }else if(s.page==Page::Power){
   // Keyboard backlight timeout only: this panel has no front light, so there is no display timeout to set.
   c.sectionLabel(Top+6,"LIGHT TIMER");
