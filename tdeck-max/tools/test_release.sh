@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Broad native audit suite. Real radio/USB/Wi-Fi tests are deliberately separate.
+python3 tools/check_line_comments.py src
 bash tools/test_ui.sh
 mkdir -p artifacts/release-tests
 for test in services sd_replace keyboard_layout audio_pcm ringtones vibrations dictation_policy pending_keys lock repeater_observer time_sync; do
