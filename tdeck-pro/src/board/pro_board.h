@@ -83,28 +83,8 @@
 
 // Misc
 #define BOARD_BOOT_PIN  0
-#define BOARD_MOTOR_PIN 2 // plain PWM-driven vibration motor (Max drives a DRV2605 haptic IC over I2C instead)
-
-// Drop-in replacement for Adafruit_DRV2605 (T-Deck Max's haptic driver): same method names the shared UI code
-// calls (begin/selectLibrary/setMode/setWaveform/stop/setRealtimeValue/readRegister8), driving a plain PWM
-// pin instead of an I2C haptic IC. The mode/waveform calls are accepted and ignored.
-#define DRV2605_MODE_INTTRIG  0
-#define DRV2605_MODE_REALTIME 1
-// Referenced only by CLI diagnostic printouts (readRegister8 always returns 0); kept so those lines need no edits.
-#define DRV2605_REG_RTPIN     0
-#define DRV2605_REG_WAVESEQ1  1
-#define DRV2605_REG_GO        2
-namespace pro {
-class SimpleHaptic {
-public:
- bool begin(TwoWire* =nullptr){pinMode(BOARD_MOTOR_PIN,OUTPUT);analogWrite(BOARD_MOTOR_PIN,0);return true;}
- void selectLibrary(uint8_t){}
- void setMode(uint8_t){}
- void setWaveform(uint8_t,uint8_t){}
- void stop(){analogWrite(BOARD_MOTOR_PIN,0);}
- // DRV2605 real-time-playback values are 0..127; scale onto the plain motor PWM duty (0..255), with a floor so
- // weak values still turn the motor (most ERM motors need a minimum duty to overcome static friction).
- void setRealtimeValue(uint8_t v){analogWrite(BOARD_MOTOR_PIN,v?uint8_t(40+v*215/127):0);}
- uint8_t readRegister8(uint8_t){return 0;}
-};
-}
+// The vibration motor is a real DRV2605 haptic IC on the shared I2C bus (address 0x5A, same chip and
+// registers as T-Deck Max), not a plain PWM-driven motor as first assumed here - confirmed against Fennek
+// (a different open-source firmware for this exact board), whose board.cpp drives it over I2C and uses this
+// same GPIO only as the chip's hardware shutdown/enable pin (HIGH out of shutdown), not as a PWM output.
+#define BOARD_HAPTIC_EN 2

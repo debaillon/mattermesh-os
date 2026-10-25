@@ -49,7 +49,7 @@ constexpr Rect EmojiPopup={Margin,ComposerY-198,W-2*Margin,196};
 constexpr Rect emojiTabRect(int index){return {EmojiPopup.x+4+index*36,EmojiPopup.y+4,34,26};}
 constexpr Rect emojiChoiceRect(int index){return {EmojiPopup.x+4+(index%6)*36,EmojiPopup.y+34+(index/6)*36,34,34};}
 constexpr Rect ChatMenu={W-32,StatusH,32,HeaderH};
-constexpr int SettingsCount=18,SettingsRowH=36,SettingsDeviceFirst=5,SettingsSystemFirst=12;
+constexpr int SettingsCount=17,SettingsRowH=36,SettingsDeviceFirst=5,SettingsSystemFirst=12;
 constexpr int SettingsGpsIndex=4;
 // Settings scroll by whole rows: scroll = first visible row, its group label above it
 // when it opens a group. Rows outside the viewport get a y off screen and are not drawn.
@@ -81,7 +81,7 @@ inline int settingsMaxScroll(){int first=0;while(!settingsVisible(SettingsCount-
 inline int settingsPage(int scroll,bool down){if(down)return std::min(settingsMaxScroll(),settingsLastVisible(scroll)+1);int first=scroll;while(first>0&&settingsLastVisible(first-1)>=scroll-1)first--;return first;}
 // Lights / vibration: three label + slider rows, then the message / mention vibration pattern rows.
 constexpr int ControlFirstY=Top+10,ControlStep=58;
-constexpr int HapticY=ControlFirstY+ControlStep*2;
+constexpr int HapticY=ControlFirstY+ControlStep; // one light row (keyboard only: this panel has no front light)
 constexpr Rect lightSliderRect(int row){return {Margin,ControlFirstY+row*ControlStep+18,W-2*Margin,28};}
 constexpr Rect HapticSlider={Margin,HapticY+18,W-2*Margin,28};
 constexpr int HapticTrackX=Margin+8,HapticTrackW=W-2*Margin-16;
@@ -238,7 +238,7 @@ constexpr int QuickSettingsSection=18,QuickSteps=16,QuickTileCount=6;
 enum QuickTile {QuickWifi,QuickBluetooth,QuickGps,QuickSound,QuickPowerOff,QuickReserved};
 constexpr Rect quickSliderRect(int row){return {Margin,Top+22+row*50,W-2*Margin,26};}
 constexpr int quickSliderLabelY(int row){return Top+4+row*50;}
-constexpr Rect quickTileRect(int index){return {Margin+(index%2)*((W-2*Margin-Gap)/2+Gap),Top+108+(index/2)*52,(W-2*Margin-Gap)/2,46};}
+constexpr Rect quickTileRect(int index){return {Margin+(index%2)*((W-2*Margin-Gap)/2+Gap),Top+58+(index/2)*52,(W-2*Margin-Gap)/2,46};}
 // Same inner track as Components::slider: step 0..QuickSteps under x.
 inline int quickStepAt(Rect r,int x){int track=r.w-16,at=x-(r.x+8);at=at<0?0:at>track?track:at;return (at*QuickSteps+track/2)/track;}
 constexpr Rect QuickConfirmBox={Margin+4,Top+46,W-2*Margin-8,138};

@@ -20,7 +20,7 @@ struct State {
  std::vector<std::string> cliLines;std::string cliPrompt,cliInput;int cliCursor=0,cliScroll=0;bool cliStreaming=false,cliCanPaste=false;
  std::string firstRepeater;
  int vibrationPercent=75;
- bool displayLightEnabled=true,keyboardLightEnabled=true;
+ bool keyboardLightEnabled=true;
  bool audioTranscribing=false,offlineEngineCompiled=false;int audioSeconds=0;bool audioReady=false,audioNotifications=true,audioRecording=false,audioWarming=false,dictationConfigured=false;int audioVolume=20;std::string audioMessage;
  Page page=Page::Home;Status status;
  // MeshCore app link: BLE name / PIN, Wi-Fi (TCP 5000) switch and address, which links are in use.
@@ -34,8 +34,8 @@ struct State {
  bool gpsEnabled=true,gpsAvailable=false,gpsData=false,gpsNmeaFresh=false,gpsTimeValid=false,gpsTemporary=false;unsigned gpsUsed=0,gpsVisible=0,gpsBaud=0;
  float temperature=0,humidity=0,pressure=0,wind=0,high=0,low=0;int weatherCode=2;double latitude=0,longitude=0,altitude=0;int satellites=0;
  std::string weatherText="No weather data",weatherUpdated,weatherMessage,weatherPlace,weatherSource;
- WeatherPhaseView weatherPhase=WeatherPhaseView::Closed;int weatherNext=0,weatherHours=0;float apparent=0,precipitation=0;int weatherHourCode[4]={};float weatherHourTemp[4]={};std::string weatherHourTime[4];
- uint32_t displayTimeout=30,keyboardTimeout=30;int powerField=0;int wallpaper=0,wallpaperFocus=0;std::string kbdQuery;bool kbdSearching=false;int kbdFocus=0,kbdLang=0;uint32_t kbdMask=1;int accentMode=2,accentFocus=2,accentTaps=0;// lock-screen wallpaper (mm_wallpaper::list index) and the focused card on its page
+ WeatherPhaseView weatherPhase=WeatherPhaseView::Closed;int weatherNext=0,weatherHours=0;float apparent=0,precipitation=0;int weatherHourCode[4]={};float weatherHourTemp[4]={};std::string weatherHourTime[4];bool weatherFahrenheit=false;
+ uint32_t keyboardTimeout=30;int wallpaper=0,wallpaperFocus=0;std::string kbdQuery;bool kbdSearching=false;int kbdFocus=0,kbdLang=0;uint32_t kbdMask=1;int accentMode=2,accentFocus=2,accentTaps=0;// lock-screen wallpaper (mm_wallpaper::list index) and the focused card on its page
 bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
 
  std::string meshCoreVersion=MM_MESHCORE_VERSION;
@@ -43,9 +43,7 @@ bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
  std::string menuDate="Date not set",date="DATE NOT SET",notice,version="",build="",commit="local",input;
  bool antennaConfirm=false,shutdownConfirm=false,usbPower=false,powerSourceKnown=false;
  // Updates page (section 17): texts from device::otaState(); otaProgress -1 = no download bar.
- // Date / time page: manual editor (day, month, year, hour, minute) and the field being edited.
- bool dateEditing=false;int dateFocus=0,dateFields[5]={1,1,2026,12,0};
- std::string otaStatus="Not checked",otaDetail,otaAction="CHECK NOW";/* the server address is never shown */int otaProgress=-1;bool otaConfirm=false;std::string timeSource="Acquiring";uint64_t storageTotal=0,storageUsed=0;
+ std::string otaStatus="Not checked",otaDetail,otaAction="CHECK NOW";/* the server address is never shown */int otaProgress=-1;bool otaConfirm=false;uint64_t storageTotal=0,storageUsed=0;
  bool emojiPicker=false;int emojiFocus=0,emojiTab=0;bool composerExpanded=false;/* any draft: the composer grows upward so every line can be proofread */size_t inputCursor=std::string::npos;/* byte offset of the caret in input; npos = end */std::vector<int> emojiRecent;std::string receivedChannel="Mesh messages";
  bool quickSent=false;int receivedHops=-1;
  int unread=0;std::string receivedName="No messages",receivedPreview="Waiting for mesh messages",receivedTime="--:--";
@@ -77,7 +75,7 @@ bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
  bool sd=false,touch=false,keyboard=false,hapticReady=false,haptic=true,caps=false,symbols=false,accent=false;
  int cpuMHz=240;uint32_t stackFree=0,rasterMs=0,paintMs=0;
  int heapKB=0,flashMB=16;
- int keyboardLight=180,displayLight=100,voltage=-1;
+ int keyboardLight=180,voltage=-1;
  int settingsFocus=0;
  int focus=0,scroll=0,filter=0,active=0,field=0,settingsOffset=0,chatOffset=0;
  int chatTotal=0,chatPosition=0;// whole thread length and newest-first offset, for the chat scroll bar (0 = use messages/chatOffset)

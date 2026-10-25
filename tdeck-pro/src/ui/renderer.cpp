@@ -439,7 +439,7 @@ void Renderer::settings(const State &s){
    case KeyboardSection:{std::string codes;for(auto l:mm_kbd::Order)if(s.kbdMask&(1u<<int(l))){if(!codes.empty())codes+=" ";codes+=mm_kbd::info(l).code;}return mm_kbd::enabledCount(s.kbdMask)>1?codes+" (Alt + Space)":"Typing: "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).name);}
    case AccentKeySection:return s.accentMode==1?"Right Shift":s.accentMode==2?"Left Shift":"Off";
    case 21:return "Speaker / microphone";case 20:return "Light timers / auto lock";case 5:return s.status.battery<0?"--%":std::to_string(s.status.battery)+"%";
-   case 16:return s.timeSource;case 24:return s.sd?"SD available":"No SD";case 11:return "USB diagnostics";case 17:return "Update your firmware";
+   case 24:return s.sd?"SD available":"No SD";case 11:return "USB diagnostics";case 17:return "Update your firmware";
    case SupportSection:return s.extraAppsUnlocked?"Support the project":"Support the project, Extra apps";default:return "Version "+s.version;}};
   std::string detail=detailFor(SettingsItems[i].section);
   // Full image with the Extra apps unlocked: the entry is only for donations.
@@ -452,16 +452,16 @@ void Renderer::settings(const State &s){
 }
 void Renderer::section(const State &s){
  const char *title="MatterMesh OS";
- switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;case Page::Music:title="Music";break;case Page::Books:title=s.epubOpen?s.epubTitle.c_str():"Books";break;default:break;}
+ switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;case Page::Music:title="Music";break;case Page::Books:title=s.epubOpen?s.epubTitle.c_str():"Books";break;default:break;}
  if(s.page==Page::Maps){g.fillScreen(BG);c.statusBar(s.status);}else{shell(s,title);g.fillRect(W-32,StatusH,32,HeaderH-1,BG);}// Maps: no header, the map takes the page
  auto valueCard=[&](Rect r,const std::string &label,const std::string &value){c.card(r);c.text(r.x+7,r.y+4,label,Font::ChatMeta);c.text(r.x+7,r.y+20,value,Font::Bold,FG,r.w-14);};
  auto gb=[](uint64_t bytes){char text[16];if(bytes<1073741824ull)snprintf(text,sizeof(text),"%u MB",unsigned(bytes/1048576));else snprintf(text,sizeof(text),"%.1f GB",bytes/1073741824.0);return std::string(text);};
  if(s.page==Page::Controls){
-  const char *names[]={"Display light","Keyboard light"};
+  // Keyboard light only: this panel has no front light (BOARD_EPD_BL is unset on this board).
   auto header=[&](int y,int row,const char *name,int percent,bool enabled){c.text(Margin+2,y,name,Font::ChatBody);auto value=std::to_string(percent)+"%";auto t=lightToggleRect(row);c.text(t.x-8-c.width(value,Font::ChatMeta),y+2,value,Font::ChatMeta);
    if(enabled)g.fillRoundRect(t.x,t.y,t.w,t.h,11,FG);else g.drawRoundRect(t.x,t.y,t.w,t.h,11,FG);c.centered(t.x,t.y+5,t.w,enabled?"ON":"OFF",Font::Bold,enabled?BG:FG);};
-  for(int row=0;row<2;row++){int percent=((row?s.keyboardLight:s.displayLight)*100+127)/255;header(ControlFirstY+row*ControlStep,row,names[row],percent,row?s.keyboardLightEnabled:s.displayLightEnabled);c.slider(lightSliderRect(row),percent);}
-  header(HapticY,2,"Vibration",s.vibrationPercent,s.haptic);c.slider(HapticSlider,s.vibrationPercent);
+  {int percent=(s.keyboardLight*100+127)/255;header(ControlFirstY,0,"Keyboard light",percent,s.keyboardLightEnabled);c.slider(lightSliderRect(0),percent);}
+  header(HapticY,1,"Vibration",s.vibrationPercent,s.haptic);c.slider(HapticSlider,s.vibrationPercent);
   c.sectionLabel(VibrationMessage.y-16,"PATTERNS","TAP TO FEEL");
   auto pattern=[&](Rect r,Icon id,const char *label,const std::string &name){c.card(r);c.icon(id,r.x+6,r.y+(r.h-16)/2,16);c.text(r.x+28,r.y+(r.h-15)/2,label,Font::ChatBody,FG,96);
    int right=r.x+r.w-56;c.text(right-c.width(name,Font::Bold),r.y+(r.h-13)/2,name,Font::Bold);c.icon(Icon::Back,r.x+r.w-44,r.y+(r.h-12)/2,12);c.icon(Icon::ChevronRight,r.x+r.w-20,r.y+(r.h-12)/2,12);};
@@ -571,7 +571,7 @@ void Renderer::section(const State &s){
   c.text(Margin,WeatherPlaceY,place,Font::ChatTitle,FG,W-2*Margin-rangeW);if(rangeW)c.text(W-Margin-rangeW+8,WeatherPlaceY+3,range,Font::ChatBody);
   c.weatherIcon(data?s.weatherCode:-1,WeatherIconX,WeatherHeroY,64);
   std::string temperature=data?number(s.temperature):"--";Font big=c.width(temperature,Font::LockClock)<=96?Font::LockClock:Font::Clock;
-  int tx=WeatherTempX+8;c.text(tx,WeatherHeroY-2,temperature,big);int tw=c.width(temperature,big);if(data){g.drawCircle(tx+tw+6,WeatherHeroY+4,3,FG);g.drawCircle(tx+tw+6,WeatherHeroY+4,2,FG);c.text(tx+tw+12,WeatherHeroY,"C",Font::ChatBody);}
+  int tx=WeatherTempX+8;c.text(tx,WeatherHeroY-2,temperature,big);int tw=c.width(temperature,big);if(data){g.drawCircle(tx+tw+6,WeatherHeroY+4,3,FG);g.drawCircle(tx+tw+6,WeatherHeroY+4,2,FG);c.text(tx+tw+12,WeatherHeroY,s.weatherFahrenheit?"F":"C",Font::ChatBody);}
   c.text(WeatherTempX+8,WeatherHeroY+50,data?s.weatherText:"No weather data",Font::ChatBody,FG,W-Margin-WeatherTempX-8);
   if(offline){
    bool wifiOff=s.weatherPhase==WeatherPhaseView::WifiOff;c.card(WeatherPrompt);c.icon(Icon::Wifi,W/2-12,WeatherPrompt.y+8,24);
@@ -631,10 +631,13 @@ void Renderer::section(const State &s){
   c.sectionLabel(AudioBackend.y-16,"DICTATION");c.card(AudioBackend);c.text(AudioBackend.x+7,AudioBackend.y+3,"Offline, Italian",Font::ChatBody,FG,AudioBackend.w-14);
   c.text(AudioBackend.x+7,AudioBackend.y+19,s.offlineEngineCompiled?"Hold MIC, release to transcribe":"Model support not compiled",Font::ChatMeta,FG,AudioBackend.w-14);
  }else if(s.page==Page::Power){
-  c.sectionLabel(Top+6,"LIGHT TIMERS");
-  const char *names[]={"Display / front-light","Keyboard backlight"};for(int i=0;i<2;i++){Rect r=powerRowRect(i);bool focus=s.powerField==i;c.card(r,focus);auto ink=focus?BG:FG;if(i)c.icon(Icon::Keyboard,r.x+6,r.y+(r.h-16)/2,16,ink);else{g.drawRect(r.x+7,r.y+14,16,10,ink);g.drawFastHLine(r.x+12,r.y+27,6,ink);}c.text(r.x+30,r.y+5,names[i],Font::ChatBody,ink,r.w-50);uint32_t seconds=i?s.keyboardTimeout:s.displayTimeout;std::string value=seconds==0?"Never":seconds>=60?std::to_string(seconds/60)+" minute"+(seconds>=120?"s":""):std::to_string(seconds)+" seconds";c.text(r.x+30,r.y+23,value+(seconds==30?" / default":""),Font::ChatMeta,ink,r.w-50);c.icon(Icon::ChevronRight,r.x+r.w-16,r.y+(r.h-12)/2,12,ink);}
-  c.sectionLabel(timeoutOptionRect(0).y-16,s.powerField?"KEYBOARD TIMEOUT":"DISPLAY TIMEOUT");const char *labels[]={"15s","30s","1m","2m","5m","Never"};const uint32_t values[]={15,30,60,120,300,0};uint32_t selected=s.powerField?s.keyboardTimeout:s.displayTimeout;
-  for(int i=0;i<6;i++){Rect r=timeoutOptionRect(i);c.card(r,selected==values[i]);c.centered(r.x,r.y+(r.h-c.lineHeight(Font::Small))/2,r.w,labels[i],Font::Small,selected==values[i]?BG:FG);}
+  // Keyboard backlight timeout only: this panel has no front light, so there is no display timeout to set.
+  c.sectionLabel(Top+6,"LIGHT TIMER");
+  Rect r=powerRowRect(0);c.card(r);c.icon(Icon::Keyboard,r.x+6,r.y+(r.h-16)/2,16,FG);c.text(r.x+30,r.y+5,"Keyboard backlight",Font::ChatBody,FG,r.w-50);
+  std::string value=s.keyboardTimeout==0?"Never":s.keyboardTimeout>=60?std::to_string(s.keyboardTimeout/60)+" minute"+(s.keyboardTimeout>=120?"s":""):std::to_string(s.keyboardTimeout)+" seconds";
+  c.text(r.x+30,r.y+23,value+(s.keyboardTimeout==30?" / default":""),Font::ChatMeta,FG,r.w-50);
+  c.sectionLabel(timeoutOptionRect(0).y-16,"KEYBOARD TIMEOUT");const char *labels[]={"15s","30s","1m","2m","5m","Never"};const uint32_t values[]={15,30,60,120,300,0};
+  for(int i=0;i<6;i++){Rect r2=timeoutOptionRect(i);c.card(r2,s.keyboardTimeout==values[i]);c.centered(r2.x,r2.y+(r2.h-c.lineHeight(Font::Small))/2,r2.w,labels[i],Font::Small,s.keyboardTimeout==values[i]?BG:FG);}
   int y=timeoutOptionRect(0).y+44;c.sectionLabel(y,"AUTO LOCK");c.text(Margin+2,y+18,"Lights wake on key or touch.",Font::ChatMeta,FG,W-2*Margin);c.text(Margin+2,y+34,"Locks after 60 s or double SPACE.",Font::ChatMeta,FG,W-2*Margin);
  }else if(s.page==Page::Keyboard){
   // Search on top, one switch per language, and how to switch / reach the extra letters below.
@@ -716,7 +719,7 @@ void Renderer::section(const State &s){
   }else{
    c.text(Margin,Top+4,"SD /music/*.mp3",Font::ChatMeta);
    if(s.musicTracks.empty())c.centered(Margin,Top+55,W-2*Margin,"No MP3 files in /music",Font::Body);
-   for(int row=0;row<int(s.musicTracks.size());row++){Rect r=musicRowRect(row);bool focused=row==s.musicFocus;c.card(r,focused);auto ink=focused?BG:FG;c.icon(Icon::Notes,r.x+6,r.y+(r.h-24)/2,24,ink);c.text(r.x+37,r.y+9,s.musicTracks[row],Font::ChatBody,ink,r.w-45);}
+   for(int row=0;row<int(s.musicTracks.size());row++){Rect r=musicRowRect(row);bool focused=row==s.musicFocus;c.card(r,focused);auto ink=focused?BG:FG;c.text(r.x+10,r.y+9,s.musicTracks[row],Font::ChatBody,ink,r.w-18);}
   }
  }else if(s.page==Page::Books){
   if(s.epubOpen){
@@ -728,25 +731,13 @@ void Renderer::section(const State &s){
   }else{
    c.text(Margin,Top+4,"SD /books/*.epub",Font::ChatMeta);
    if(s.epubBooks.empty())c.centered(Margin,Top+55,W-2*Margin,"No EPUB files in /books",Font::Body);
-   for(int row=0;row<int(s.epubBooks.size());row++){Rect r=booksRowRect(row);bool focused=row==s.epubFocus;c.card(r,focused);auto ink=focused?BG:FG;c.icon(Icon::Notes,r.x+6,r.y+(r.h-24)/2,24,ink);c.text(r.x+37,r.y+9,s.epubBooks[row],Font::ChatBody,ink,r.w-45);}
+   for(int row=0;row<int(s.epubBooks.size());row++){Rect r=booksRowRect(row);bool focused=row==s.epubFocus;c.card(r,focused);auto ink=focused?BG:FG;c.text(r.x+10,r.y+9,s.epubBooks[row],Font::ChatBody,ink,r.w-18);}
   }
  }else if(s.page==Page::Terminal){
   c.sectionLabel(Top+6,"SYSTEM");valueCard({Margin,Top+22,W-2*Margin,40},"FREE MEMORY / STACK",std::to_string(s.heapKB)+" KB / "+std::to_string(s.stackFree)+" B");
   valueCard(settingsHalf(0,Top+68),"CPU",std::to_string(s.cpuMHz)+" MHz");valueCard(settingsHalf(1,Top+68),"MESH RX / TX",std::to_string(s.radioPacketsRX)+" / "+std::to_string(s.radioPacketsTX));
   valueCard({Margin,Top+114,W-2*Margin,40},"UI / E-PAPER TIME",std::to_string(s.rasterMs)+" / "+std::to_string(s.paintMs)+" ms");
   c.sectionLabel(Top+164,"USB SERIAL");c.text(Margin+2,Top+182,"ui stats / radio status / status",Font::ChatMeta,FG,W-2*Margin);
- }else if(s.page==Page::DateTime&&s.dateEditing){
-  auto two=[](int v){char t[8];snprintf(t,sizeof(t),"%02d",v);return std::string(t);};
-  c.sectionLabel(Top+6,"DATE","DD / MM / YYYY");c.sectionLabel(Top+66,"TIME","HH : MM");
-  for(int i=0;i<DateFieldCount;i++)c.button(dateFieldRect(i),i==2?std::to_string(s.dateFields[2]):two(s.dateFields[i]),s.dateFocus==i);
-  c.button(DateMinus,"-");c.button(DatePlus,"+");
-  c.text(Margin+2,Top+172,"h/l field, k/j +/-, type digits",Font::ChatMeta,FG,W-2*Margin);c.text(Margin+2,Top+188,"Enter saves, Back cancels",Font::ChatMeta,FG,W-2*Margin);
-  c.button(DateSave,"SAVE",true);c.button(DateCancel,"CANCEL");
- }else if(s.page==Page::DateTime){
-  c.sectionLabel(Top+6,"CLOCK");valueCard({Margin,Top+22,W-2*Margin,40},"TIME",s.status.clock);valueCard({Margin,Top+68,W-2*Margin,40},"DATE",s.date);
-  c.sectionLabel(Top+118,"SOURCE");valueCard({Margin,Top+134,W-2*Margin,40},"SYNCHRONIZED FROM",s.timeSource);
-  c.text(Margin+2,Top+184,"Set automatically from Wi-Fi or GPS.",Font::ChatMeta,FG,W-2*Margin);
-  c.button(DateManual,"SET MANUALLY");
  }else if(s.page==Page::Updates){
   c.sectionLabel(Top+6,"INSTALLED");valueCard({Margin,Top+22,W-2*Margin,40},"VERSION",s.version+" / "+s.commit);
   c.sectionLabel(Top+72,"UPDATE SERVER");valueCard({Margin,Top+88,W-2*Margin,40},"STATUS",s.otaStatus);

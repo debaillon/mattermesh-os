@@ -34,9 +34,8 @@ void Renderer::quickTile(int index,const std::string &label,bool on,int glyph){
 }
 void Renderer::quickSettings(const State &s){
  shell(s,"Quick settings");g.fillRect(W-32,StatusH,32,HeaderH-1,BG);
- // Brightness = front light level; Off when the display light is switched off.
- quickSlider(0,true,"Brightness",(s.displayLight*QuickSteps+127)/255,!s.displayLightEnabled);
- quickSlider(1,false,"Volume",(s.audioVolume*QuickSteps+50)/100,!s.audioNotifications||s.audioVolume==0);
+ // No brightness slider: this panel has no front light to dim.
+ quickSlider(0,false,"Volume",(s.audioVolume*QuickSteps+50)/100,!s.audioNotifications||s.audioVolume==0);
  quickTile(QuickWifi,"Wi-Fi",s.wifiEnabled,0);
  quickTile(QuickBluetooth,"Bluetooth",s.bleEnabled,1);
  quickTile(QuickGps,"GPS",s.gpsEnabled&&!s.gpsTemporary,2);

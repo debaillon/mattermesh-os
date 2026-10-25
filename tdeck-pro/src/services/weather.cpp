@@ -44,6 +44,16 @@ static bool geolocate(const std::vector<AccessPoint> &aps,double &latitude,doubl
   if(http.POST(payload)==200){DynamicJsonDocument json(1024);if(!deserializeJson(json,http.getString())){double lat=json["location"]["lat"]|NAN,lon=json["location"]["lng"]|NAN;if(isfinite(lat)&&isfinite(lon)&&fabs(lat)<=90&&fabs(lon)<=180){latitude=lat;longitude=lon;source=json["fallback"].isNull()?WeatherSourceWifi:WeatherSourceIp;ok=true;}}}http.end();}
  return ok;
 }
+// US (Fahrenheit) vs. everywhere else (Celsius): a rough lat/lon bounding box rather than a reverse-geocode
+// country field, so unit choice doesn't depend on a second network call or on the exact shape of the Photon
+// response - good enough to pick a display unit, not meant as a precise border check.
+static bool isUSLocation(double lat,double lon){
+ if(lat>=24.5&&lat<=49.5&&lon>=-125.0&&lon<=-66.9)return true; // continental US
+ if(lat>=51.0&&lat<=72.0&&lon>=-180.0&&lon<=-129.0)return true; // Alaska
+ if(lat>=18.5&&lat<=22.5&&lon>=-160.5&&lon<=-154.5)return true; // Hawaii
+ if(lat>=17.5&&lat<=18.6&&lon>=-67.5&&lon<=-65.2)return true; // Puerto Rico
+ return false;
+}
 const char *weatherDescription(int code){if(code==0)return "Clear sky";if(code==1||code==2)return "Partly cloudy";if(code==3)return "Overcast";if(code==45||code==48)return "Fog";if(code>=51&&code<=57)return "Drizzle";if((code>=61&&code<=67)||(code>=80&&code<=82))return "Rain";if((code>=71&&code<=77)||code==85||code==86)return "Snow";if(code>=95&&code<=99)return "Thunderstorm";return "Weather unavailable";}
 const char *weatherSourceLabel(uint8_t source){switch(source){case WeatherSourceGps:return "GPS";case WeatherSourceWifi:return "Wi-Fi";case WeatherSourceIp:return "IP approx.";case WeatherSourceSaved:return "Last fix";default:return "";}}
 static bool current(uint32_t id){return id==generation.load(std::memory_order_relaxed);}
@@ -62,7 +72,7 @@ static void fetchWeather(Request &request){
    else{result.temperature=now["temperature_2m"];result.apparent=now["apparent_temperature"]|result.temperature;result.humidity=now["relative_humidity_2m"];result.pressure=now["surface_pressure"];result.wind=now["wind_speed_10m"];result.precipitation=now["precipitation"]|0.0f;result.code=now["weather_code"];result.high=daily["temperature_2m_max"][0];result.low=daily["temperature_2m_min"][0];
     // Next hours every 3 h; hourly starts at the current hour.
     for(int i=0;i<WeatherHours;i++){int at=3*(i+1);if(hourly["temperature_2m"][at].isNull()||hourly["weather_code"][at].isNull())break;result.hourTemp[i]=hourly["temperature_2m"][at];result.hourCode[i]=hourly["weather_code"][at];String stamp=hourly["time"][at]|"";strlcpy(result.hourTime[i],stamp.length()>=16?stamp.substring(11,16).c_str():"--:--",sizeof(result.hourTime[i]));result.hours=i+1;}
-    result.latitude=latitude;result.longitude=longitude;result.source=source;strlcpy(result.stamp,now["time"]|"",sizeof(result.stamp));result.updated=time(nullptr);
+    result.latitude=latitude;result.longitude=longitude;result.source=source;result.fahrenheit=isUSLocation(latitude,longitude);strlcpy(result.stamp,now["time"]|"",sizeof(result.stamp));result.updated=time(nullptr);
     result.valid=isfinite(result.temperature)&&result.temperature>=-100&&result.temperature<=70&&isfinite(result.wind)&&result.wind>=0&&isfinite(result.high)&&isfinite(result.low);if(!result.valid)error="Weather values invalid";}}}
    else error="Weather retry / HTTP "+String(status);http.end();}
  }
