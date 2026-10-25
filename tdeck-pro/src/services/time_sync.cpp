@@ -1,6 +1,7 @@
 #include "clock_limits.h"
 #include "time_sync.h"
 #include "time_sync_policy.h"
+#include "timezone_sync.h"
 #include "location.h"
 #include <Arduino.h>
 #include <WiFi.h>
@@ -79,6 +80,12 @@ bool timeSyncManual(uint32_t epoch){
  releaseGPS();clockKept=true;started=true;acquired(TimeSource::Manual,epoch);return true;
 }
 TimeSyncState timeSyncState(){return state;}
+struct tm localBreakdown(time_t utc){
+ int offset;struct tm tm;
+ if(timezoneOffsetSeconds(offset)){time_t shifted=utc+offset;gmtime_r(&shifted,&tm);}
+ else localtime_r(&utc,&tm);
+ return tm;
+}
 }
 #ifdef ESP32
 extern "C" void sntp_sync_time(struct timeval *tv){

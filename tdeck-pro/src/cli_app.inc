@@ -2,7 +2,7 @@
 #include "services/cli_line.h"
 static void cliCompose(mm::State &v);// CLI taps and scrolling need only the CLI part of the state
 static std::string rxClock(const matter::RxPacket &p,bool year){
- char text[24];if(p.epoch){time_t t=p.epoch;struct tm local;localtime_r(&t,&local);strftime(text,sizeof(text),year?"%d/%m/%Y %H:%M:%S":"%d/%m %H:%M:%S",&local);}
+ char text[24];if(p.epoch){time_t t=p.epoch;struct tm local=device::localBreakdown(t);strftime(text,sizeof(text),year?"%d/%m/%Y %H:%M:%S":"%d/%m %H:%M:%S",&local);}
  else{uint32_t s=p.uptimeMs/1000;snprintf(text,sizeof(text),"up %lu:%02lu:%02lu",(unsigned long)(s/3600),(unsigned long)(s/60%60),(unsigned long)(s%60));}
  return text;
 }
@@ -35,7 +35,7 @@ static void cliRun(const std::string &command){
  }
  else if(verb=="ver"){cliPrint("MatterMesh OS " MM_RELEASE_LABEL " / MeshCore v" MM_MESHCORE_VERSION);cliPrint("Build " __DATE__ " / " MM_GIT_COMMIT);}
  else if(verb=="board")cliPrint("LilyGO " MM_DEVICE_MODEL " / ESP32-S3 / SX1262");
- else if(verb=="clock"){time_t now=time(nullptr);if(now<MM_EPOCH_MIN)cliPrint("Clock not set / acquiring");else{struct tm local,utc;localtime_r(&now,&local);gmtime_r(&now,&utc);strftime(text,sizeof(text),"%H:%M:%S - %d/%m/%Y",&local);cliPrint(text);strftime(text,sizeof(text),"UTC %H:%M:%S",&utc);auto ts=device::timeSyncState();cliPrint(std::string(text)+" / source "+(ts.source==device::TimeSource::GPS?"GPS":ts.source==device::TimeSource::WiFi?"Wi-Fi":"none"));}}
+ else if(verb=="clock"){time_t now=time(nullptr);if(now<MM_EPOCH_MIN)cliPrint("Clock not set / acquiring");else{struct tm local=device::localBreakdown(now),utc;gmtime_r(&now,&utc);strftime(text,sizeof(text),"%H:%M:%S - %d/%m/%Y",&local);cliPrint(text);strftime(text,sizeof(text),"UTC %H:%M:%S",&utc);auto ts=device::timeSyncState();cliPrint(std::string(text)+" / source "+(ts.source==device::TimeSource::GPS?"GPS":ts.source==device::TimeSource::WiFi?"Wi-Fi":"none"));}}
  else if(verb=="uptime")cliPrint("Up "+cliDuration(millis()/1000));
  else if(verb=="get"){
   if(arg=="name")cliPrint(cliName());

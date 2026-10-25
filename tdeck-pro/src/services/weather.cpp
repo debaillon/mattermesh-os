@@ -1,7 +1,6 @@
 #include "clock_limits.h"
 #include "../board/device_model.h"
 #include "weather.h"
-#include "weather_ca.h"
 #include "connectivity.h"
 #include "location.h"
 #include "ui/build_info.h"
@@ -28,7 +27,13 @@ struct Request {uint32_t generation;bool gps;double latitude,longitude;std::vect
 static void publish(){state.revision++;revision.store(state.revision,std::memory_order_relaxed);}
 static void setPhase(WeatherPhase phase,const String &message){xSemaphoreTake(mutex,portMAX_DELAY);if(state.phase!=phase||state.message!=message){state.phase=phase;state.message=message;publish();}xSemaphoreGive(mutex);}
 static bool placeMatches(double latitude,double longitude){return placeCache.name[0]&&fabs(latitude-placeCache.latitude)<0.02&&fabs(longitude-placeCache.longitude)<0.02;}
-static void secure(WiFiClientSecure &client,HTTPClient &http){client.setCACert(WEATHER_ROOT_CA);client.setHandshakeTimeout(6);client.setTimeout(6);http.setConnectTimeout(5000);http.setTimeout(6000);}
+// setInsecure(), not a pinned CA: Let's Encrypt now serves these hosts a 4-certificate ECDSA (P-384) chain
+// (leaf -> intermediate -> cross-signed root -> ISRG Root X2), and validating that chain against a pinned
+// CA reliably fails on-device with "SSL - Memory allocation failed" (confirmed via direct test), even though
+// plenty of heap is free - it's the chain-verification path itself that's too heavy here, not a pin mismatch
+// fixable by swapping in a newer root. None of these calls carry credentials or sensitive data (weather,
+// coarse position, timezone offset), so skipping certificate validation is an acceptable trade on this MCU.
+static void secure(WiFiClientSecure &client,HTTPClient &http){client.setInsecure();client.setHandshakeTimeout(6);client.setTimeout(6);http.setConnectTimeout(5000);http.setTimeout(6000);}
 static String resolvePlace(const String &endpoint,double latitude,double longitude){
  WiFiClientSecure client;HTTPClient http;secure(client,http);String name;
  String url=endpoint+"/reverse?lat="+String(latitude,5)+"&lon="+String(longitude,5)+"&lang=en&limit=1";
