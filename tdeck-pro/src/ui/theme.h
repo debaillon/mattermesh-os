@@ -67,7 +67,7 @@ inline Rect settingsHalf(int column,int y,int h=40){return {column?W/2+3:Margin,
 constexpr Rect GpsToggle=SettingsSwitch;
 // Forces a fresh Wi-Fi/GPS time sync attempt (device::timeSyncRequest()) - manual time set itself only
 // exists over serial now (see main.cpp's dateSave()), this is the UI affordance for the automatic path.
-constexpr Rect GpsTimeSync={Margin,Top+232,W-2*Margin,30};
+constexpr Rect GpsTimeSync={Margin,Top+248,W-2*Margin,30};
 // No Settings entry or page render for this anymore (the Donate/Unlock page was removed); the id itself
 // stays since sectionPage()'s switch still maps it, matching how DateTime/Updates/Info are left in place too.
 constexpr int SupportSection=31;
