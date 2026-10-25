@@ -8,8 +8,8 @@ bool audioDiagnosticPcm(const uint8_t *&data,size_t &bytes);
 String audioDiagnosticResult();
 uint32_t audioRevision();
 bool takeTranscript(String &text);
-// Not yet ported to the T-Deck Pro: the PCM5102A DAC / PDM mic are different hardware from the Max's ES7210/ES8311
-// codec this service was written against. Every call here is a safe no-op so the shared UI code keeps compiling
-// and running; audioState().ready stays false and the Sound/Dictation pages show "unavailable".
+// Notification tones play through the shared PCM5102A I2S output (services/audio_output.h). Recording/dictation
+// is not ported to the T-Deck Pro: the PDM mic is different hardware from the Max's ES7210/ES8311 codec this was
+// written against, so those calls stay safe no-ops (audioState().dictationConfigured stays false).
 void audioBegin();void audioLoop();AudioState audioState();bool audioBusy();bool audioNotify(bool test=false,bool mention=false);bool audioPreview(int tone);void audioRingtone(bool mention,int tone);void audioNotifications(bool enabled);void audioVolume(int value);bool audioRecord();bool audioProbeRecord();void audioStop();void audioCancel();
 }

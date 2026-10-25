@@ -74,6 +74,7 @@ SET_LOOP_TASK_STACK_SIZE(UI_TASK_STACK_BYTES);
 #include "services/pending_keys.h"
 #include "services/first_repeater.h"
 #include "services/audio.h"
+#include "services/music.h"
 #include "services/ringtones.h"
 #include "services/vibrations.h"
 #include "services/offline_it.h"
@@ -1437,7 +1438,7 @@ void pollKeyboard() {
 // Navigation database store for the GPS (gps_backup.h): one file on the SD card, written via a temporary name.
 bool gpsStoreLoad(std::vector<uint8_t> &out){if(!sdReady)return false;File f=SD.open(device::sdSavedPath(SD,"/mattermesh/gps_nav.bin","/mattermesh/gps_nav.bak"));if(!f)return false;size_t n=f.size();if(n<device::GpsBackup::HeaderSize||n>device::GpsBackup::MaxBytes){f.close();return false;}out.resize(n);size_t got=f.read(out.data(),n);f.close();return got==n;}
 bool gpsStoreSave(const std::vector<uint8_t> &data){if(!sdReady||data.empty())return false;File f=SD.open("/mattermesh/gps_nav.tmp",FILE_WRITE);if(!f)return false;bool ok=f.write(data.data(),data.size())==data.size();f.close();if(!ok){SD.remove("/mattermesh/gps_nav.tmp");return false;}return device::sdReplace(SD,"/mattermesh/gps_nav.tmp","/mattermesh/gps_nav.bin","/mattermesh/gps_nav.bak");}
-void serviceWhileDisplayBusy(const void*){static uint32_t serviced=0;uint32_t now=millis();if(uint32_t(now-serviced)>=10){serviced=now;busyServiceCalls++;matter::loop();hapticLoop();device::powerLoop();device::audioLoop();device::locationLoop();device::timeSyncLoop();if(keyboardReady&&digitalRead(BOARD_KEYBOARD_INT)==LOW)captureKeyboard();serviceReplay();captureTouch();}delay(1);}
+void serviceWhileDisplayBusy(const void*){static uint32_t serviced=0;uint32_t now=millis();if(uint32_t(now-serviced)>=10){serviced=now;busyServiceCalls++;matter::loop();hapticLoop();device::powerLoop();device::audioLoop();device::musicLoop();device::locationLoop();device::timeSyncLoop();if(keyboardReady&&digitalRead(BOARD_KEYBOARD_INT)==LOW)captureKeyboard();serviceReplay();captureTouch();}delay(1);}
 int channelAtPoint(int x,int y){if(deviceLocked||channelOptions)return -1;for(auto &hit:paintedChannels)if(hit.area.contains(x,y))return hit.id;return -1;}
 
 void longPressChannel(int x,int y){int id=channelAtPoint(x,y);if(id>=0){device::activity();openChannelOptions(id);}}
@@ -1683,6 +1684,7 @@ void handle(const String &s) {
  if(s=="feedback status"){auto p=device::powerState();Serial.printf("FEEDBACK_STATUS display_enabled=%d keyboard_enabled=%d display_pwm=%u keyboard_pwm=%u flash_active=%d flash_count=%lu haptic_percent=%u haptic_active=%d haptic_rtp=%u haptic_enabled=%d\n",p.displayEnabled,p.keyboardEnabled,p.displayPWM,p.keyboardPWM,device::notificationFlashing(),p.notificationFlashes,vibrationPercent,hapticActive,hapticReady?haptic.readRegister8(DRV2605_REG_RTPIN):0,hapticEnabled);return;}
  if(s=="time status"){auto t=device::timeSyncState();Serial.printf("TIME_STATUS acquiring=%d gps_waiting=%d temporary=%d timeout=%d source=%s wifi_connected=%d epoch=%lu\n",t.acquiring,t.gpsWaiting,t.gpsTemporary,t.timedOut,t.source==device::TimeSource::WiFi?"wifi":t.source==device::TimeSource::GPS?"gps":t.source==device::TimeSource::Manual?"manual":"none",device::wifiConnected(),uint32_t(time(nullptr)));return;}
  if(s=="speaker status"){auto a=device::audioState();Serial.printf("SPEAKER_STATUS ready=%d volume=%d busy=%d played=%lu bytes=%lu error=%d\n",a.ready,a.volume,a.busy,a.playbacks,a.txBytes,a.lastError);return;}
+ if(s.startsWith("speaker preview ")){int tone=s.substring(16).toInt();bool started=device::audioPreview(tone);Serial.printf("SPEAKER_PREVIEW tone=%d started=%d\n",tone,started);return;}
  if(s=="audio status"){auto a=device::audioState();Serial.printf("AUDIO_STATUS ready=%d notify=%d volume=%d busy=%d recording=%d samples=%lu level=%d configured=%d peak=%d\n",a.ready,a.notifications,a.volume,a.busy,a.recording,a.samples,a.level,a.dictationConfigured,a.peak);return;}
  if(s=="audio test"&&!deviceLocked){device::audioNotify(true);render();return;}
  if(s=="audio mic-test"&&!deviceLocked){device::audioProbeRecord();render();return;}
@@ -1814,7 +1816,7 @@ void setup(){
  else if(!setupMark){markSetupDone();}
  device::mapTilesBegin(SD,sdReady);
  loadLights();device::powerBegin(displayBrightness,keyboardBrightness);loadChats();loadRegionScopes();loadChannelNotifications();loadVibrations();loadKeyboardLanguages();loadAccentMode();loadWallpaper();
- device::audioBegin();
+ device::audioBegin();device::musicBegin(sdReady);
  if(sdReady){loadBindings();radioJournal.begin(SD);
   uint32_t latest[MAX_CHATS]={};for(auto &record:radioJournal.index)if(!record.mine&&record.chat>=0&&record.chat<chatCount)latest[record.chat]=record.token;
   for(int i=0;i<chatCount;i++)if(!(radioJournal.readTrackedChats&(uint32_t(1)<<i)))radioJournal.markRead(i,latest[i]);
@@ -1836,7 +1838,7 @@ void loop(){
   command.trim();uint32_t request=0;if(command.startsWith("@")){int split=command.indexOf(' ');if(split>1){request=strtoul(command.c_str()+1,nullptr,10);command.remove(0,split+1);}}
   handle(command);command="";if(request)Serial.printf("USB_DONE %lu\n",request);
  }else if(c!='\r'&&command.length()<256)command+=c;}
- matter::loop();hapticLoop();device::audioLoop();
+ matter::loop();hapticLoop();device::audioLoop();device::musicLoop();
  if(!deviceLocked&&screen==Screen::Chat&&archivePager.poll(radioJournal)){chatRowsRevision++;repaintNow();}
  if(deviceLocked)incomingBanner.clear();else if(incomingBanner.expire(millis())){repaintNow();}
  // OTA: repaint Settings / Updates on progress; a newly offered release shows a banner once per boot.

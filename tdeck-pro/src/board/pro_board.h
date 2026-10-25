@@ -74,6 +74,13 @@
 #define BOARD_GPS_PPS 1
 #define BOARD_GPS_EN  39 // direct enable GPIO; Max gates the same net through its IO expander instead
 
+// Audio (PCM5102A I2S DAC - the audio-SKU variant of this board; the alternate 4G SKU reuses these same three
+// GPIOs for its A7682E modem instead, so this only applies if the audio DAC is actually fitted). Simple I2S DAC,
+// no I2C control needed (unlike the Max's ES7210/ES8311 codec) - always listening once the I2S bus is clocked.
+#define BOARD_I2S_BCLK 7
+#define BOARD_I2S_DOUT 8
+#define BOARD_I2S_LRC  9
+
 // Misc
 #define BOARD_BOOT_PIN  0
 #define BOARD_MOTOR_PIN 2 // plain PWM-driven vibration motor (Max drives a DRV2605 haptic IC over I2C instead)
