@@ -13,4 +13,8 @@ void musicStop();
 void musicVolume(int value);
 void musicLoop();
 MusicState musicState();
+// Shared I2S engine (one physical I2S0 peripheral => one owner): audio.cpp's notification tones also play
+// through this, as a WAV file written once to SD - see music.cpp's header comment and audio.cpp.
+bool enginePlayTone(const String &absolutePath,int volumePercent);
+bool engineToneBusy();
 }

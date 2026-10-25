@@ -78,6 +78,7 @@ SET_LOOP_TASK_STACK_SIZE(UI_TASK_STACK_BYTES);
 #include "services/music.h"
 #include "services/epub.h"
 #include "services/timezone_sync.h"
+#include "services/spi_lock.h"
 #include "services/ringtones.h"
 #include "services/vibrations.h"
 #include "services/offline_it.h"
@@ -687,7 +688,7 @@ void requestAntenna(bool internal){
 void confirmAntenna(){if(!antennaConfirm)return;if(matter::antenna(false,notice,true))antennaConfirm=false;render();}
 void confirmShutdown(){
  if(!shutdownConfirm)return;auto source=device::batteryPowerSource();if(source!=device::PowerSource::Battery){notice=source==device::PowerSource::USB?"Unplug USB to power off":"Power controller unavailable";render();return;}
- device::audioCancel();stopVibration();device::powerLocked(true);setTouchEnabled(false);epd.epd2.setBusyCallback(nullptr);frame.fillScreen(mm::BG);mm::Components c(frame);c.centered(8,145,224,"POWER OFF",mm::Font::ChatTitle);{mm::RefreshPlan plan;plan.changed=true;plan.full=true;mm::paintFramebuffer(epd.epd2,frame.getBuffer(),plan);}
+ device::audioCancel();stopVibration();device::powerLocked(true);setTouchEnabled(false);epd.epd2.setBusyCallback(nullptr);frame.fillScreen(mm::BG);mm::Components c(frame);c.centered(8,145,224,"POWER OFF",mm::Font::ChatTitle);{mm::RefreshPlan plan;plan.changed=true;plan.full=true;device::spiLock();mm::paintFramebuffer(epd.epd2,frame.getBuffer(),plan);device::spiUnlock();}
  if(!device::batteryShutdown()){epd.epd2.setBusyCallback(serviceWhileDisplayBusy);device::powerLocked(false);setTouchEnabled(true);notice="Power off failed";render();return;}delay(200);epd.epd2.setBusyCallback(serviceWhileDisplayBusy);device::powerLocked(false);setTouchEnabled(true);notice="Power cut not completed";render();
 }
 void loadRadioDraft(bool keepSelection);
@@ -740,7 +741,7 @@ void render(int batteryPreview) {
  bool urgent=composerUrgent;composerUrgent=false;
  if(plan.changed&&!plan.full){if(urgent&&typingEnabled&&!deviceLocked&&screen==Screen::Chat&&plan.area.y>=mm::Top){plan.typing=true;}else if(typingCleanupPending&&plan.area.x<=typingArea.x&&plan.area.y<=typingArea.y&&plan.area.x+plan.area.w>=typingArea.x+typingArea.w&&plan.area.y+plan.area.h>=typingArea.y+typingArea.h)typingCleanupPending=false;}
  if(plan.changed){
-  panelPainting=true;touchTransition=frameScene!=visibleTouchScene;mm::paintFramebuffer(epd.epd2,frame.getBuffer(),plan);panelPainting=false;
+  panelPainting=true;touchTransition=frameScene!=visibleTouchScene;device::spiLock();mm::paintFramebuffer(epd.epd2,frame.getBuffer(),plan);device::spiUnlock();panelPainting=false;
   partialRefreshes=plan.full?0:partialRefreshes+(mm::RefreshTracker::countsAsPartial(plan)?1:0);refreshTracker.commit(frame.getBuffer(),plan);lastPhysicalPaint=millis();
   if(plan.typing){typingPaints++;lastTypingPaint=millis();if(!typingCleanupPending)typingArea=plan.area;else{int x0=std::min(typingArea.x,plan.area.x),y0=std::min(typingArea.y,plan.area.y),x1=std::max(typingArea.x+typingArea.w,plan.area.x+plan.area.w),y1=std::max(typingArea.y+typingArea.h,plan.area.y+plan.area.h);typingArea={x0,y0,x1-x0,y1-y0};}typingCleanupPending=true;}
   else if(plan.full)typingCleanupPending=false;
@@ -1804,7 +1805,7 @@ void handle(const String &s) {
 }
 void splash(int progress,const String &stage){
  refreshTracker.reset();mm::splashScreen(frame,progress,std::string(stage.c_str()));
- mm::RefreshPlan plan;plan.changed=true;plan.full=progress==0;plan.area=mm::SplashProgress;mm::paintFramebuffer(epd.epd2,frame.getBuffer(),plan);
+ mm::RefreshPlan plan;plan.changed=true;plan.full=progress==0;plan.area=mm::SplashProgress;device::spiLock();mm::paintFramebuffer(epd.epd2,frame.getBuffer(),plan);device::spiUnlock();
  Serial.printf("BOOT_SPLASH progress=%d\n",progress);
 }
 
@@ -1814,6 +1815,7 @@ void setup(){
  Serial.setTxBufferSize(16384);Serial.setRxBufferSize(2*SD_TRANSFER_CHUNK+512);Serial.setTxTimeoutMs(1000);Serial.begin(115200);device::wdtTraceBegin(); pinMode(BOARD_BOOT_PIN,INPUT_PULLUP); // RX queue holds two `sd put` chunks plus a command line; never resized after begin
  for(int pin:{BOARD_LORA_CS,BOARD_SD_CS,BOARD_EPD_CS}){pinMode(pin,OUTPUT);digitalWrite(pin,HIGH);}
  // Shared SPI: every device retains its own chip select and transaction settings.
+ device::spiLockBegin();
  SPI.begin(BOARD_SPI_SCK,BOARD_SPI_MISO,BOARD_SPI_MOSI);
  epd.init(115200,true,2,false);epd.setRotation(0);splash(0,"Initializing mesh services...");
  pinMode(BOARD_I2C_SDA,INPUT_PULLUP);pinMode(BOARD_I2C_SCL,OUTPUT_OPEN_DRAIN);digitalWrite(BOARD_I2C_SCL,HIGH);
