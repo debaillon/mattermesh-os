@@ -1,4 +1,5 @@
 #include "HynTouch.h"
+#include "TouchContact.h"
 
 #include <driver/gpio.h>
 #include <esp_err.h>
@@ -6,9 +7,15 @@
 
 #include <cstring>
 
-// T-Deck Pro build: no XL9555 IO expander library here. Only the macro this file needs from it (used to tell a
-// real GPIO number apart from a virtual IO-expander-encoded one) is reproduced locally, with the same encoding
-// T-Deck Max's TDeckMaxBoard.h uses; this board never passes a virtual id, so the check below is always true.
+// T-Deck Max pulls its board pin macros (BOARD_TOUCH_SDA/SCL/RST/INT, LCD_HOR_SIZE/LCD_VER_SIZE, used by
+// hyn_touch_default_config() below) from the external TDeckMaxBoard.h, made globally includable via a
+// platformio.ini -I flag. This port's equivalent is its own board/board.h, made the same way (see
+// platformio.ini's "-I src" build flag).
+#include "board/board.h"
+
+// No XL9555 IO expander library here. Only the one macro this file needs from it (used to tell a real GPIO
+// number apart from a virtual IO-expander-encoded one) is reproduced locally, with the same encoding T-Deck
+// Max's TDeckMaxBoard.h uses; this board never passes a virtual id, so the check below is always true.
 #ifndef XL9555_GPIO_IS
 #define XL9555_GPIO_BASE (0x100)
 #define XL9555_GPIO_IS(id) ((int)(id) >= XL9555_GPIO_BASE && (int)(id) < (XL9555_GPIO_BASE + 16))
@@ -35,6 +42,7 @@ struct HynTouchRuntime {
     int attached_irq = -1;
     bool key_pressed[3] = {false, false, false};
     bool key_seen[3] = {false, false, false};
+    HynTouchContact contact;
     HynTouchKeyCallback key_callback = nullptr;
     void *key_callback_user_data = nullptr;
 };
@@ -43,6 +51,7 @@ HynTouchRuntime g_touch;
 
 void clear_key_state()
 {
+    g_touch.contact.reset();
     memset(g_touch.key_pressed, 0, sizeof(g_touch.key_pressed));
     memset(g_touch.key_seen, 0, sizeof(g_touch.key_seen));
 }
@@ -270,6 +279,11 @@ uint8_t hyn_touch_get_point(int16_t *x_array, int16_t *y_array, uint8_t get_poin
         const int ret = g_touch.data->hyn_fuc_used->tp_report();
         point_count = (g_touch.data->rp_buf.report_need & REPORT_POS) ? g_touch.data->rp_buf.rep_num : 0;
         apply_axis_transform(point_count);
+        if (ret == 0) {
+            g_touch.contact.report(g_touch.data->rp_buf.report_need & REPORT_POS, point_count,
+                point_count ? g_touch.data->rp_buf.pos_info[0].pos_x : 0,
+                point_count ? g_touch.data->rp_buf.pos_info[0].pos_y : 0);
+        }
 
         for (uint8_t i = 0; i < point_count && i < get_point; ++i) {
             x_array[i] = g_touch.data->rp_buf.pos_info[i].pos_x;
@@ -290,6 +304,12 @@ uint8_t hyn_touch_get_point(int16_t *x_array, int16_t *y_array, uint8_t get_poin
     handle_key_report();
     g_touch.data->rp_buf.report_need = REPORT_NONE;
     return point_count;
+}
+
+bool hyn_touch_get_contact_point(int16_t *x,int16_t *y)
+{
+    if (!g_touch.ready || !g_touch.contact.down || !x || !y) return false;
+    *x=g_touch.contact.x;*y=g_touch.contact.y;return true;
 }
 
 bool hyn_touch_get_key_state(uint8_t key_id)
@@ -321,6 +341,7 @@ void hyn_touch_set_key_callback(HynTouchKeyCallback callback, void *user_data)
 
 void hyn_sleep()
 {
+    g_touch.contact.reset();
     if (!g_touch.ready || !g_touch.data || !g_touch.data->hyn_fuc_used || !g_touch.data->hyn_fuc_used->tp_supend) {
         return;
     }

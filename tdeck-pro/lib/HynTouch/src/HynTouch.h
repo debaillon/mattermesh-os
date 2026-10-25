@@ -27,6 +27,8 @@ bool hyn_touch_init();
 bool hyn_touch_init_with_config(const HynTouchConfig *config);
 bool hyn_touch_is_ready();
 uint8_t hyn_touch_get_point(int16_t *x_array, int16_t *y_array, uint8_t get_point);
+// Current contact remains down between IRQ reports, until an explicit UP.
+bool hyn_touch_get_contact_point(int16_t *x,int16_t *y);
 bool hyn_touch_get_key_state(uint8_t key_id);
 bool hyn_touch_get_key_seen(uint8_t key_id);
 void hyn_touch_clear_key_seen();
