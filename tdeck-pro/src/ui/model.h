@@ -6,7 +6,7 @@
 #include "mesh/message_limits.h"
 namespace mm {
 enum class WeatherPhaseView {Closed,WifiOff,Connecting,NoNetwork,WaitingClock,Locating,Fetching,Ready,Error};
-enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Antenna,Storage,QuickSettings,Cli,ContactPicker,Support,Keyboard,AccentKey };
+enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Antenna,Storage,QuickSettings,Cli,ContactPicker,Support,Keyboard,AccentKey,Music,Books };
 struct Conversation { std::string name,scope,preview,time="--:--",sender,age="--";bool direct=false;int id=0,unread=0,activity=0; };
 struct Message {std::string sender,time,body,meta;bool mine;std::string path,heard,scope;int hops=-1;uint32_t token=0;int repeaters=-1;Message(std::string s="",std::string t="",std::string b="",std::string m="",bool own=false):sender(std::move(s)),time(std::move(t)),body(std::move(b)),meta(std::move(m)),mine(own){} };
 struct ContactRow {std::string name,detail;};
@@ -84,6 +84,8 @@ bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
  std::string chatName,scope;
  std::string newName,newScope="*",newKey;int newForm=0,messageMenuFocus=0;bool searching=false,messageMenu=false;
  std::vector<std::string> files;
+ std::vector<std::string> musicTracks;int musicFocus=0;bool musicPlaying=false,musicPaused=false;std::string musicTrack,musicMessage;uint32_t musicElapsedSec=0;int musicVolume=70;
+ std::vector<std::string> epubBooks;int epubFocus=0;bool epubOpen=false;std::string epubTitle,epubMessage;std::vector<std::string> epubPageLines;
  std::vector<Conversation> conversations;std::vector<Message> messages;
 };
 }

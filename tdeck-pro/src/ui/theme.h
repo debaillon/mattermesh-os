@@ -115,6 +115,23 @@ constexpr Rect WeatherRefresh={Margin,Bottom-30,W-2*Margin,30},WeatherPrompt={Ma
 inline Rect weatherCell(int i){return {Margin+(i%2)*((W-2*Margin)/2+3),WeatherGridY+(i/2)*(WeatherCellH+4),(W-2*Margin)/2-3,WeatherCellH};}
 constexpr int FileListY=Top+20,FileRowH=34,FileRows=(Bottom-FileListY)/FileRowH;
 inline Rect fileRowRect(int row){return {Margin,FileListY+row*FileRowH,W-2*Margin,FileRowH-2};}
+// Music / Books apps: section 25 (MP3 player) and 26 (EPUB reader). Both browse an SD folder with the same
+// row-list layout as Files above; the player/reader view below the list uses its own fixed button row.
+constexpr int MusicSection=25,BooksSection=26;
+constexpr int MusicListY=FileListY,MusicRowH=FileRowH,MusicRows=FileRows;
+inline Rect musicRowRect(int row){return {Margin,MusicListY+row*MusicRowH,W-2*Margin,MusicRowH-2};}
+// Now-playing controls: track name/time above, four buttons in a row below.
+constexpr int MusicPlayerY=Top+16,MusicButtonY=MusicPlayerY+72,MusicButtonH=36,MusicButtonGap=6;
+constexpr int MusicButtonW=(W-2*Margin-3*MusicButtonGap)/4;
+inline Rect musicButtonRect(int index){return {Margin+index*(MusicButtonW+MusicButtonGap),MusicButtonY,MusicButtonW,MusicButtonH};}
+// EPUB reader: same list layout for picking a book; once open, a full-body paginated text view with two
+// corner tap targets (previous/next page) sized generously since pages turn far more often than any other
+// control here.
+constexpr int BooksListY=FileListY,BooksRowH=FileRowH,BooksRows=FileRows;
+inline Rect booksRowRect(int row){return {Margin,BooksListY+row*BooksRowH,W-2*Margin,BooksRowH-2};}
+// Row count depends on the font's actual line height (Components::lineHeight), computed where paginated.
+constexpr int EpubTextY=Top+4,EpubTextBottom=Bottom; // no in-body title or page counter: the header already shows the title
+constexpr Rect EpubPrevTap={0,Top,W/3,Bottom-Top},EpubNextTap={W*2/3,Top,W-W*2/3,Bottom-Top};
 // Wallpaper: three thumbnail cards (the 240x302 art at 1/5 scale) side by side, focused = filled, active = inner
 // frame; the focused wallpaper's name and description sit below the row.
 constexpr int WallpaperCardCount=3,WallpaperThumbScale=5,WallpaperThumbW=48,WallpaperThumbH=60;

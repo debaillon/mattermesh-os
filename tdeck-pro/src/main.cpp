@@ -75,6 +75,8 @@ SET_LOOP_TASK_STACK_SIZE(UI_TASK_STACK_BYTES);
 #include "services/first_repeater.h"
 #include "services/audio.h"
 #include "services/music.h"
+#include "services/epub.h"
+#include "services/timezone_sync.h"
 #include "services/ringtones.h"
 #include "services/vibrations.h"
 #include "services/offline_it.h"
@@ -151,6 +153,8 @@ void openContact(int index);void contactPage(int direction);void openSection(int
 static void wipeString(String &s){for(unsigned i=0;i<s.length();i++)s.setCharAt(i,0);s="";}
 void toolsOpen(int id);void toolsClose(int id);void toolsCompose(mm::State &v);bool toolsBack();String *toolsField();
 void mapOpen();void mapClose();void routeOpen(const std::string &path,const std::string &sender);void routeClose();bool routeLoading();void routeCompose(mm::State &v);void mapCompose(mm::State &v);void mapPan(int dx,int dy);
+void musicAppOpen();void musicAppClose();bool musicAppKey(char c);bool musicAppTap(int x,int y);void musicAppCompose(mm::State &v);
+void booksAppOpen();void booksAppClose();bool booksAppKey(char c);bool booksAppTap(int x,int y);void booksAppCompose(mm::State &v);
 bool radioPowerEditing=false,radioDevicePage=false;int radioDeviceFocus=0;constexpr int CompanionNameField=matter::RadioFieldCount;String radioPowerInput;
 matter::Config radioDraft;bool radioDraftLoaded=false;int radioEditField=matter::TxPower,radioPresetSelection=-1,radioBandSelection=868;
 int radioFocus=3,nodeScroll=0,powerField=0,wifiOffset=0,wifiFocus=0;
@@ -639,6 +643,8 @@ v.radioRX=radio.rx;v.radioTX=radio.tx;v.radioError=radio.error;v.radioFrequency=
  if(channelOptionTarget>=0&&channelOptionTarget<chatCount){v.channelOptionName=chats[channelOptionTarget].name.c_str();v.channelOptionDirect=chats[channelOptionTarget].direct;v.channelOptionMuted=mutedChannels&(uint32_t(1)<<channelOptionTarget);}
  // The lock screen keeps `section`: do not rebuild the map view (PSRAM + tile requests) or tool state while locked.
  if(!deviceLocked&&screen==Screen::Section&&section==9)mapCompose(v);
+ if(!deviceLocked&&screen==Screen::Section&&section==mm::MusicSection)musicAppCompose(v);
+ if(!deviceLocked&&screen==Screen::Section&&section==mm::BooksSection)booksAppCompose(v);
  if(!deviceLocked&&screen==Screen::Section&&mm::toolsSection(section))toolsCompose(v);
  return v;
 }
@@ -662,7 +668,7 @@ void loadLights(){
  f.close();
 }
 mm::Page sectionPage(int id){
- switch(id){case 1:return mm::Page::Mesh;case 2:return mm::Page::Radio;case 3:return mm::Page::GPS;case 4:return mm::Page::Wifi;case 5:return mm::Page::Battery;case 6:return mm::Page::Controls;case 7:return mm::Page::Files;case 8:return mm::Page::Info;case 9:return mm::Page::Maps;case 10:return mm::Page::Weather;case 11:return mm::Page::Terminal;case 14:return mm::Page::Bluetooth;case 16:return mm::Page::DateTime;case 17:return mm::Page::Updates;case mm::QuickSettingsSection:return mm::Page::QuickSettings;case 19:return mm::Page::Settings;case 20:return mm::Page::Power;case 21:return mm::Page::Audio;case 22:return mm::Page::Wallpaper;case mm::KeyboardSection:return mm::Page::Keyboard;case 23:return mm::Page::Antenna;case mm::AccentKeySection:return mm::Page::AccentKey;case 24:return mm::Page::Storage;case mm::CliSection:return mm::Page::Cli;case mm::SupportSection:return mm::Page::Support;default:return mm::Page::Info;}
+ switch(id){case 1:return mm::Page::Mesh;case 2:return mm::Page::Radio;case 3:return mm::Page::GPS;case 4:return mm::Page::Wifi;case 5:return mm::Page::Battery;case 6:return mm::Page::Controls;case 7:return mm::Page::Files;case 8:return mm::Page::Info;case 9:return mm::Page::Maps;case 10:return mm::Page::Weather;case 11:return mm::Page::Terminal;case 14:return mm::Page::Bluetooth;case 16:return mm::Page::DateTime;case 17:return mm::Page::Updates;case mm::QuickSettingsSection:return mm::Page::QuickSettings;case 19:return mm::Page::Settings;case 20:return mm::Page::Power;case 21:return mm::Page::Audio;case 22:return mm::Page::Wallpaper;case mm::KeyboardSection:return mm::Page::Keyboard;case 23:return mm::Page::Antenna;case mm::AccentKeySection:return mm::Page::AccentKey;case 24:return mm::Page::Storage;case mm::CliSection:return mm::Page::Cli;case mm::SupportSection:return mm::Page::Support;case mm::MusicSection:return mm::Page::Music;case mm::BooksSection:return mm::Page::Books;default:return mm::Page::Info;}
 }
 void renderSection(){
  auto v=uiState();v.page=sectionPage(section);v.filter=discoverFilter;v.settingsFocus=settingsFocus;v.settingsOffset=settingsScroll;
@@ -687,14 +693,14 @@ void openSection(int id,bool paint){
  if(id==mm::SupportSection)supportTab=0;// Settings > Donate / Unlock opens on Donate
  antennaConfirm=shutdownConfirm=otaConfirm=dateEditing=false;emojiPicker=false;scopePicker=scopeEditing=clearChatConfirm=channelOptions=deleteChannelConfirm=positionShare=false;
  if(navigation.size()<16)navigation.push_back({screen,section});
- section=constrain(id,0,mm::MaxSection);notice="";if(section==1){contactSearching=false;contactQuery="";contactFocus=nodeScroll=0;}if(section==22)wallpaperFocus=lockWallpaper;if(section==mm::KeyboardSection){kbdQuery="";kbdSearching=false;kbdFocus=0;}if(section==mm::AccentKeySection)accentFocus=accentMode;if(section==9)mapOpen();if(mm::toolsSection(section))toolsOpen(section);
+ section=constrain(id,0,mm::MaxSection);notice="";if(section==1){contactSearching=false;contactQuery="";contactFocus=nodeScroll=0;}if(section==22)wallpaperFocus=lockWallpaper;if(section==mm::KeyboardSection){kbdQuery="";kbdSearching=false;kbdFocus=0;}if(section==mm::AccentKeySection)accentFocus=accentMode;if(section==9)mapOpen();if(section==mm::MusicSection)musicAppOpen();if(section==mm::BooksSection)booksAppOpen();if(mm::toolsSection(section))toolsOpen(section);
  radioPowerEditing=false;radioDevicePage=false;radioDeviceFocus=0;if(section==2)loadRadioDraft(false);
  if(section==0){searching=false;searchQuery="";messagesMenu=false;chatsParent=screen==Screen::Launcher?Screen::Launcher:Screen::Home;screen=Screen::Chats;}
  else {sectionParent=screen==Screen::Launcher?Screen::Launcher:Screen::Home;screen=Screen::Section;}
  if(paint)render();
 }
 // Unlocked idle policy: nothing to draw, no input for 3 s, no radio/audio work -> 80 MHz and a 20 ms loop; any activity or frame brings 240 MHz back.
-bool idleCpuLoop(){if(deviceLocked)return false;bool busy=dirty||radioDirty||dictationChat>=0||quickReply.active||deleteHeld||touchPipeline.contactActive()||matter::busy()||device::audioBusy()||uint32_t(millis()-device::powerState().lastActivity)<3000||uint32_t(millis()-lastPhysicalPaint)<1500;uint32_t want=busy?device::NORMAL_CPU_FREQUENCY:80;if(getCpuFrequencyMhz()!=want)setCpuFrequencyMhz(want);return !busy;}
+bool idleCpuLoop(){if(deviceLocked)return false;auto m=device::musicState();bool musicPlaying=m.playing&&!m.paused;bool busy=dirty||radioDirty||dictationChat>=0||quickReply.active||deleteHeld||touchPipeline.contactActive()||matter::busy()||device::audioBusy()||musicPlaying||uint32_t(millis()-device::powerState().lastActivity)<3000||uint32_t(millis()-lastPhysicalPaint)<1500;uint32_t want=busy?device::NORMAL_CPU_FREQUENCY:80;if(getCpuFrequencyMhz()!=want)setCpuFrequencyMhz(want);return !busy;}
 // A panel over the chat (options, position, details, scopes, clear, message actions/path, emoji picker).
 static bool chatOverlayOpen(){return channelOptions||positionShare||chatDetails||scopePicker||clearChatConfirm||messageActions||messagePath||emojiPicker;}
 void render(int batteryPreview) {
@@ -870,6 +876,8 @@ String *editableField(){
  return nullptr;
 }
 #include "map_app.inc"
+#include "mp3_app.inc"
+#include "epub_app.inc"
 #include "cli_app.inc"
 // The tools hooks: the CLI.
 void toolsOpen(int id){notice="";if(id==mm::CliSection)cliOpen();}
@@ -994,6 +1002,8 @@ void key(char c) {
  if(screen==Screen::Section&&mm::toolsSection(section)&&toolsKey(c))return;
  if(c=='\b'){auto field=editableField();if(!field||!field->length()){back();return;}if(field==&input)inputEraseBeforeCursor();else eraseLastCodepoint(*field);notice="";if(screen==Screen::Chats&&searching){auto list=conversationList();selected=list.empty()?chatCount:list[0].id;}if(screen==Screen::PickContact){pickerFocus=0;refreshPicker();}if(screen==Screen::Section&&section==1)contactFocus=nodeScroll=0;if(screen==Screen::Section&&section==mm::KeyboardSection)kbdFocus=0;repaintSettled();return;}
  if(screen==Screen::Section&&section==9&&mapKey(c))return;
+ if(screen==Screen::Section&&section==mm::MusicSection&&musicAppKey(c))return;
+ if(screen==Screen::Section&&section==mm::BooksSection&&booksAppKey(c))return;
  if(channelOptions){if(c=='a'){back();return;}if(deleteChannelConfirm){if(c=='\n')deleteSelectedChannel();return;}if(channelKeyView){if(c=='\n')back();return;}const bool direct=chats[channelOptionTarget].direct;const int slots=direct?2:3;if(c=='w'||c=='k'||c=='s'||c=='j'){channelOptionFocus=(channelOptionFocus+(c=='s'||c=='j'?1:slots-1))%slots;render();}else if(c=='\n'||c=='d')channelOption(direct&&channelOptionFocus==1?2:channelOptionFocus);return;}
  if(screen==Screen::Chat&&positionShare){if(c=='\n'||c=='d')shareGpsPosition();else if(c=='a')back();return;}
  if(screen==Screen::Chat&&scopeEditing){if(c=='\n')saveNewScope();else if(c>=32&&c<=126&&scopeInput.length()<32){scopeInput+=c;notice="";repaintSettled();}return;}
@@ -1168,7 +1178,10 @@ void tap(int x,int y) {
   if(mm::toolsSection(section)&&toolsTap(x,y))return;
   if(section==mm::QuickSettingsSection&&shutdownConfirm){quickSettingsTap(x,y);return;}
   if(section==9){mapTap(x,y);return;}// full-page map: its own floating back button
+  if(section==mm::BooksSection&&device::epubChapterIndex()>=0){if(mm::BackButton.contains(x,y))booksAppKey('\b');else booksAppTap(x,y);return;}// back closes the book first, not the whole section
   if(mm::BackButton.contains(x,y)){back();return;}
+  if(section==mm::MusicSection){if(musicAppTap(x,y))return;return;}
+  if(section==mm::BooksSection){if(booksAppTap(x,y))return;return;}
   if(section==mm::QuickSettingsSection){quickSettingsTap(x,y);return;}
   if(section==16){if(!dateEditing){if(mm::DateManual.contains(x,y))dateEditBegin();return;}
    for(int i=0;i<mm::DateFieldCount;i++)if(mm::dateFieldRect(i).contains(x,y)){dateFocus=i;dateTyped=0;render();return;}
@@ -1438,12 +1451,17 @@ void pollKeyboard() {
 // Navigation database store for the GPS (gps_backup.h): one file on the SD card, written via a temporary name.
 bool gpsStoreLoad(std::vector<uint8_t> &out){if(!sdReady)return false;File f=SD.open(device::sdSavedPath(SD,"/mattermesh/gps_nav.bin","/mattermesh/gps_nav.bak"));if(!f)return false;size_t n=f.size();if(n<device::GpsBackup::HeaderSize||n>device::GpsBackup::MaxBytes){f.close();return false;}out.resize(n);size_t got=f.read(out.data(),n);f.close();return got==n;}
 bool gpsStoreSave(const std::vector<uint8_t> &data){if(!sdReady||data.empty())return false;File f=SD.open("/mattermesh/gps_nav.tmp",FILE_WRITE);if(!f)return false;bool ok=f.write(data.data(),data.size())==data.size();f.close();if(!ok){SD.remove("/mattermesh/gps_nav.tmp");return false;}return device::sdReplace(SD,"/mattermesh/gps_nav.tmp","/mattermesh/gps_nav.bin","/mattermesh/gps_nav.bak");}
-void serviceWhileDisplayBusy(const void*){static uint32_t serviced=0;uint32_t now=millis();if(uint32_t(now-serviced)>=10){serviced=now;busyServiceCalls++;matter::loop();hapticLoop();device::powerLoop();device::audioLoop();device::musicLoop();device::locationLoop();device::timeSyncLoop();if(keyboardReady&&digitalRead(BOARD_KEYBOARD_INT)==LOW)captureKeyboard();serviceReplay();captureTouch();}delay(1);}
+void serviceWhileDisplayBusy(const void*){static uint32_t serviced=0;uint32_t now=millis();if(uint32_t(now-serviced)>=10){serviced=now;busyServiceCalls++;matter::loop();hapticLoop();device::powerLoop();device::audioLoop();device::locationLoop();device::timeSyncLoop();if(keyboardReady&&digitalRead(BOARD_KEYBOARD_INT)==LOW)captureKeyboard();serviceReplay();captureTouch();}delay(1);}
+// device::musicLoop() is NOT serviced here deliberately: it does SD card reads over SPI, and this callback can
+// fire while the e-ink controller's own SPI transaction is still in flight (mid-refresh). A nested SD SPI
+// transaction in that window hung the SD card at the hardware level in testing - no watchdog catches that, since
+// it is a genuine stuck SPI peripheral wait, not a software loop. Music can stutter a little across a refresh
+// (serviced again from the main loop() a few tens of ms later); that is much better than a true hang.
 int channelAtPoint(int x,int y){if(deviceLocked||channelOptions)return -1;for(auto &hit:paintedChannels)if(hit.area.contains(x,y))return hit.id;return -1;}
 
 void longPressChannel(int x,int y){int id=channelAtPoint(x,y);if(id>=0){device::activity();openChannelOptions(id);}}
 static uint32_t fnv1a(const String &text){uint32_t hash=2166136261u;for(unsigned i=0;i<text.length();i++){hash^=uint8_t(text[i]);hash*=16777619u;}return hash;}
-uint32_t touchScene(){uint32_t hash=2166136261u;auto add=[&](uint32_t value){hash=(hash^value)*16777619u;};add(int(screen));add(section);add(activeChat);if(screen==Screen::Chat&&!deviceLocked)add(chatRowsRevision);add(channelOptions);add(channelKeyView);add(deleteChannelConfirm);add(positionShare);add(chatDetails);add(scopePicker);add(scopeEditing);add(clearChatConfirm);add(messageActions);add(messagePath);add(messageBodyView);add(emojiPicker);add(searching);add(messagesMenu);add(contactSearching);add(discoverFilter);add(antennaConfirm);add(shutdownConfirm);add(radioPowerEditing);add(radioDevicePage);add(wifiEditing);add(chatOffset);add(nodeScroll);add(settingsScroll);add(filesScroll);add(wifiOffset);if(screen==Screen::Chats)add(selected);if(screen==Screen::Welcome){add(welcomeStep);add(welcomeWifiChoice);add(welcomeBand);add(welcomeBytes);add(welcomeFocus);}add(deviceLocked);add(quickReply.active);add(quickReply.pending);add(quickReply.sent);return hash;}
+uint32_t touchScene(){uint32_t hash=2166136261u;auto add=[&](uint32_t value){hash=(hash^value)*16777619u;};add(int(screen));add(section);add(activeChat);if(screen==Screen::Chat&&!deviceLocked)add(chatRowsRevision);add(channelOptions);add(channelKeyView);add(deleteChannelConfirm);add(positionShare);add(chatDetails);add(scopePicker);add(scopeEditing);add(clearChatConfirm);add(messageActions);add(messagePath);add(messageBodyView);add(emojiPicker);add(searching);add(messagesMenu);add(contactSearching);add(discoverFilter);add(antennaConfirm);add(shutdownConfirm);add(radioPowerEditing);add(radioDevicePage);add(wifiEditing);add(chatOffset);add(nodeScroll);add(settingsScroll);add(filesScroll);add(wifiOffset);if(section==mm::MusicSection){add(musicFocus);add(device::musicState().playing);add(device::musicState().paused);}if(section==mm::BooksSection){add(booksFocus);add(device::epubChapterIndex());add(bookCurrentPage);}if(screen==Screen::Chats)add(selected);if(screen==Screen::Welcome){add(welcomeStep);add(welcomeWifiChoice);add(welcomeBand);add(welcomeBytes);add(welcomeFocus);}add(deviceLocked);add(quickReply.active);add(quickReply.pending);add(quickReply.sent);return hash;}
 struct UiReplay {int kind=0,step=0;uint32_t started=0;bool released=false;};UiReplay uiReplay;uint32_t injectedTouchUntil=0;int injectedTouchX=0,injectedTouchY=0;
 void feedTouch(bool down,int x,int y,uint32_t now){
  bool allowed=!(panelPainting&&touchTransition);int target=-1;std::string key;
@@ -1472,7 +1490,7 @@ void pollTouch(){
 }
 void setTouchEnabled(bool enabled){injectedTouchUntil=0;touchPipeline.reset();paintedChannels.clear();pinMode(BOARD_TOUCH_RST,OUTPUT);digitalWrite(BOARD_TOUCH_RST,enabled?HIGH:LOW);if(enabled){touchPipeline.waitForRelease();initTouch();}}
 
-uint32_t requestedLockedCpu(){if(quickReply.active)return device::NORMAL_CPU_FREQUENCY;// Polled every 500 ms while locked: plain flags, not the full state copies (Strings) of the status getters; a
+uint32_t requestedLockedCpu(){if(quickReply.active)return device::NORMAL_CPU_FREQUENCY;{auto m=device::musicState();if(m.playing&&!m.paused)return device::NORMAL_CPU_FREQUENCY;}// MP3 decode falls behind real time well under full clock (Fennek's player for this exact board boosts for the same reason). Polled every 500 ms while locked: plain flags, not the full state copies (Strings) of the status getters; a
  // recording is always busy.
  return device::lockedCpuFrequency(device::wifiOn(),device::bleOn(),device::gpsActive(),device::audioBusy()||hapticActive||device::notificationFlashing());}
 void restoreLockedCpu(){uint32_t wanted=requestedLockedCpu();if(!locked40Supported&&wanted<80)wanted=80;if(getCpuFrequencyMhz()!=wanted&&!setCpuFrequencyMhz(wanted)){locked40Supported=false;setCpuFrequencyMhz(device::LOCKED_CPU_FALLBACK);Serial.println("LOCK_CPU_FALLBACK");}}
@@ -1685,6 +1703,15 @@ void handle(const String &s) {
  if(s=="time status"){auto t=device::timeSyncState();Serial.printf("TIME_STATUS acquiring=%d gps_waiting=%d temporary=%d timeout=%d source=%s wifi_connected=%d epoch=%lu\n",t.acquiring,t.gpsWaiting,t.gpsTemporary,t.timedOut,t.source==device::TimeSource::WiFi?"wifi":t.source==device::TimeSource::GPS?"gps":t.source==device::TimeSource::Manual?"manual":"none",device::wifiConnected(),uint32_t(time(nullptr)));return;}
  if(s=="speaker status"){auto a=device::audioState();Serial.printf("SPEAKER_STATUS ready=%d volume=%d busy=%d played=%lu bytes=%lu error=%d\n",a.ready,a.volume,a.busy,a.playbacks,a.txBytes,a.lastError);return;}
  if(s.startsWith("speaker preview ")){int tone=s.substring(16).toInt();bool started=device::audioPreview(tone);Serial.printf("SPEAKER_PREVIEW tone=%d started=%d\n",tone,started);return;}
+ if(s=="music list"){auto tracks=device::musicList();Serial.printf("MUSIC_LIST count=%d\n",int(tracks.size()));for(auto &t:tracks)Serial.printf(" %s\n",t.c_str());return;}
+ if(s=="epub list"){auto books=device::epubList();Serial.printf("EPUB_LIST count=%d\n",int(books.size()));for(auto &b:books)Serial.printf(" %s\n",b.c_str());return;}
+ if(s.startsWith("epub open ")){bool ok=device::epubOpenBook(s.substring(10));Serial.printf("EPUB_OPEN ok=%d title=%s chapters=%d error=%s\n",ok,device::epubBookTitle().c_str(),device::epubChapterCount(),device::epubLastError().c_str());return;}
+ if(s=="epub text"){Serial.printf("EPUB_TEXT chapter=%d len=%d\n",device::epubChapterIndex(),device::epubText().length());Serial.println(device::epubText().substring(0,400));return;}
+ if(s.startsWith("epub chapter ")){bool ok=device::epubGoToChapter(s.substring(13).toInt());Serial.printf("EPUB_CHAPTER ok=%d index=%d error=%s\n",ok,device::epubChapterIndex(),device::epubLastError().c_str());return;}
+ if(s=="epub close"){device::epubCloseBook();Serial.println("EPUB_CLOSE");return;}
+ if(s=="music status"){auto m=device::musicState();Serial.printf("MUSIC_STATUS available=%d playing=%d paused=%d track=%s elapsed=%lu volume=%d message=%s\n",m.available,m.playing,m.paused,m.track.c_str(),m.elapsedSec,m.volume,m.message.c_str());return;}
+ if(s.startsWith("music play ")){bool started=device::musicPlay(s.substring(11));Serial.printf("MUSIC_PLAY started=%d\n",started);return;}
+ if(s=="music stop"){device::musicStop();Serial.println("MUSIC_STOP");return;}
  if(s=="audio status"){auto a=device::audioState();Serial.printf("AUDIO_STATUS ready=%d notify=%d volume=%d busy=%d recording=%d samples=%lu level=%d configured=%d peak=%d\n",a.ready,a.notifications,a.volume,a.busy,a.recording,a.samples,a.level,a.dictationConfigured,a.peak);return;}
  if(s=="audio test"&&!deviceLocked){device::audioNotify(true);render();return;}
  if(s=="audio mic-test"&&!deviceLocked){device::audioProbeRecord();render();return;}
@@ -1816,13 +1843,13 @@ void setup(){
  else if(!setupMark){markSetupDone();}
  device::mapTilesBegin(SD,sdReady);
  loadLights();device::powerBegin(displayBrightness,keyboardBrightness);loadChats();loadRegionScopes();loadChannelNotifications();loadVibrations();loadKeyboardLanguages();loadAccentMode();loadWallpaper();
- device::audioBegin();device::musicBegin(sdReady);
+ device::audioBegin();device::musicBegin(sdReady);device::epubBegin(sdReady);
  if(sdReady){loadBindings();radioJournal.begin(SD);
   uint32_t latest[MAX_CHATS]={};for(auto &record:radioJournal.index)if(!record.mine&&record.chat>=0&&record.chat<chatCount)latest[record.chat]=record.token;
   for(int i=0;i<chatCount;i++)if(!(radioJournal.readTrackedChats&(uint32_t(1)<<i)))radioJournal.markRead(i,latest[i]);
   device::restoreUnreadCounts(radioJournal.index,radioJournal.readTokens,unreadMessages,size_t(chatCount));
   refreshLastReceived();matter::begin(SD,incomingRadio,deliveredRadio);for(auto &scope:regionScopes)matter::registerScope(scope.c_str());configureChannels();}
- device::batteryLoop();device::locationBegin(true);if(sdReady){device::LocationStore store;store.load=gpsStoreLoad;store.save=gpsStoreSave;device::locationStore(store);}appLinkBegin();device::connectivityBegin();device::weatherBegin();device::otaBegin();epd.epd2.setBusyCallback(serviceWhileDisplayBusy);
+ device::batteryLoop();device::locationBegin(true);if(sdReady){device::LocationStore store;store.load=gpsStoreLoad;store.save=gpsStoreSave;device::locationStore(store);}appLinkBegin();device::connectivityBegin();device::weatherBegin();device::otaBegin();device::timezoneSyncBegin();epd.epd2.setBusyCallback(serviceWhileDisplayBusy);
  {auto r=matter::snapshot();Serial.printf("RADIO_BOOT ready=%d frequency=%.3f band=%d bw=%.2f sf=%u cr=%u power=%d internal=%d error=%d\n",r.ready,r.config.frequency,matter::radioBand(r.config.frequency),r.config.bandwidth,r.config.sf,r.config.cr,r.config.power,r.internal,r.error);}
  splash(100,sdReady?"Ready for the field.":"SD unavailable / check card");
  if(!sdReady)notice="SD unavailable / check card";
@@ -1852,7 +1879,7 @@ void loop(){
  static int paintedAudioSeconds=-1;{int seconds=-1;if(!deviceLocked&&screen==Screen::Chat&&dictationChat>=0){auto audio=device::audioState();if(audio.recording)seconds=audio.warming?-2:std::min<int>(device::DICTATION_MAX_SECONDS,audio.samples/device::DICTATION_RATE);}
   if(seconds!=paintedAudioSeconds){paintedAudioSeconds=seconds;if(seconds!=-1){repaintNow();}}}
  device::powerHold(device::audioBusy());device::batteryLoop();device::powerLoop();
- static uint32_t serviceAt=0;if(millis()-serviceAt>=(deviceLocked?100u:20u)){serviceAt=millis();device::connectivityLoop();device::locationLoop();device::timeSyncLoop();device::weatherSetOpen(!deviceLocked&&screen==Screen::Section&&section==10);device::weatherLoop();device::mapTilesLoop();device::otaLoop(device::wifiConnected(),lastPaint!=0);appLinkLoop();}
+ static uint32_t serviceAt=0;if(millis()-serviceAt>=(deviceLocked?100u:20u)){serviceAt=millis();device::connectivityLoop();device::locationLoop();device::timeSyncLoop();device::timezoneSyncLoop();device::weatherSetOpen(!deviceLocked&&screen==Screen::Section&&section==10);device::weatherLoop();device::mapTilesLoop();device::otaLoop(device::wifiConnected(),lastPaint!=0);appLinkLoop();}
  static uint32_t timeRevision=0;auto clockRevision=device::timeSyncState().revision;if(clockRevision!=timeRevision){timeRevision=clockRevision;lockScreenDirty=true;if(!deviceLocked){markRadioDirty();}}
  appVisibilityLoop();welcomeWifiLoop();toolsTick();pollKeyboard();pollQuickReply();pollLockKey();pollPendingKeys();if(deviceLocked){if(quickReply.active)pollTouch();updateLockScreen();if(refreshTracker.maintenanceDue()&&!quickReply.active&&!lockScreenDirty&&uint32_t(millis()-lastPaint)>=2500&&uint32_t(millis()-lastMaintenanceAt)>=60000){lastMaintenanceAt=millis();forceFullRefresh=true;render();}delay(quickReply.active?5:20);return;}
  // Connectivity / weather / GPS revisions repaint only the pages that draw them; elsewhere only a status-bar icon change counts.

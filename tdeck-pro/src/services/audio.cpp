@@ -11,7 +11,10 @@ namespace device {
 static Preferences prefs;static AudioState state;static std::atomic<bool> toneBusy{false};
 static void toneWorker(void *arg){
  int tone=int(reinterpret_cast<intptr_t>(arg));
- auto &out=i2sOutput();out.SetGain(1.0f)/* ringtoneSample already scales by state.volume below */;out.begin();
+ auto &out=i2sOutput();out.SetGain(1.0f)/* ringtoneSample already scales by state.volume below */;
+ // Ringtones are synthesised at SPEAKER_RATE (16kHz, see audio_pcm.h); AudioOutputI2S otherwise defaults to
+ // 44100Hz, which played every tone back at 2.76x speed/pitch - a short high chirp instead of the real tone.
+ out.SetRate(SPEAKER_RATE);out.SetBitsPerSample(16);out.SetChannels(2);out.begin();
  int frames=ringtoneFrames(tone);
  for(int i=0;i<frames;i++){int16_t s=ringtoneSample(tone,i,state.volume);int16_t pair[2]={s,s};while(!out.ConsumeSample(pair))vTaskDelay(1);}
  out.flush();out.stop();toneBusy=false;state.busy=false;state.revision++;vTaskDelete(nullptr);

@@ -452,7 +452,7 @@ void Renderer::settings(const State &s){
 }
 void Renderer::section(const State &s){
  const char *title="MatterMesh OS";
- switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;default:break;}
+ switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;case Page::Music:title="Music";break;case Page::Books:title=s.epubOpen?s.epubTitle.c_str():"Books";break;default:break;}
  if(s.page==Page::Maps){g.fillScreen(BG);c.statusBar(s.status);}else{shell(s,title);g.fillRect(W-32,StatusH,32,HeaderH-1,BG);}// Maps: no header, the map takes the page
  auto valueCard=[&](Rect r,const std::string &label,const std::string &value){c.card(r);c.text(r.x+7,r.y+4,label,Font::ChatMeta);c.text(r.x+7,r.y+20,value,Font::Bold,FG,r.w-14);};
  auto gb=[](uint64_t bytes){char text[16];if(bytes<1073741824ull)snprintf(text,sizeof(text),"%u MB",unsigned(bytes/1048576));else snprintf(text,sizeof(text),"%.1f GB",bytes/1073741824.0);return std::string(text);};
@@ -705,6 +705,31 @@ void Renderer::section(const State &s){
   c.text(Margin,Top+4,s.sd?"SD CARD / ROOT":"NO SD CARD",Font::ChatMeta);
   if(s.files.empty())c.centered(Margin,Top+55,W-2*Margin,"No files available",Font::Body);
   int start=s.scroll;for(int row=0;row<FileRows&&start+row<int(s.files.size());row++){Rect r=fileRowRect(row);c.card(r);auto name=s.files[start+row];bool dir=name.rfind("[DIR] ",0)==0;if(dir)name=name.substr(6);c.icon(dir?Icon::Files:Icon::Notes,r.x+6,r.y+(r.h-24)/2,24);c.text(r.x+37,r.y+3,name,Font::ChatBody,FG,r.w-45);c.text(r.x+37,r.y+18,dir?"Folder / read-only":"File / read-only",Font::ChatMeta);}
+ }else if(s.page==Page::Music){
+  if(s.musicPlaying){
+   c.sectionLabel(MusicPlayerY-14,"NOW PLAYING");c.text(Margin,MusicPlayerY,s.musicTrack,Font::Body,FG,W-2*Margin);
+   char clock[8];snprintf(clock,sizeof(clock),"%02u:%02u",unsigned(s.musicElapsedSec/60),unsigned(s.musicElapsedSec%60));
+   c.text(Margin,MusicPlayerY+22,(s.musicPaused?std::string("Paused / "):std::string("Playing / "))+clock+" / vol "+std::to_string(s.musicVolume)+"%",Font::ChatMeta);
+   const char *labels[4]={s.musicPaused?"Play":"Pause","Stop","Vol -","Vol +"};
+   for(int i=0;i<4;i++){Rect r=musicButtonRect(i);c.card(r);c.centered(r.x,r.y+(r.h-14)/2,r.w,labels[i],Font::Body);}
+   if(!s.musicMessage.empty())c.text(Margin,MusicButtonY+MusicButtonH+10,s.musicMessage,Font::ChatMeta);
+  }else{
+   c.text(Margin,Top+4,"SD /music/*.mp3",Font::ChatMeta);
+   if(s.musicTracks.empty())c.centered(Margin,Top+55,W-2*Margin,"No MP3 files in /music",Font::Body);
+   for(int row=0;row<int(s.musicTracks.size());row++){Rect r=musicRowRect(row);bool focused=row==s.musicFocus;c.card(r,focused);auto ink=focused?BG:FG;c.icon(Icon::Notes,r.x+6,r.y+(r.h-24)/2,24,ink);c.text(r.x+37,r.y+9,s.musicTracks[row],Font::ChatBody,ink,r.w-45);}
+  }
+ }else if(s.page==Page::Books){
+  if(s.epubOpen){
+   // The book title already shows in the page header (see the title switch above); no in-body title line or
+   // page/chapter counter, so the whole body is reading space. Tap left/right thirds to turn pages, middle
+   // third or the header back button to close the book - see epub_app.inc.
+   int y=EpubTextY;for(auto &line:s.epubPageLines){c.text(Margin,y,line,Font::ChatBody,FG,W-2*Margin);y+=c.lineHeight(Font::ChatBody);}
+   if(!s.epubMessage.empty())c.centered(Margin,EpubTextBottom-14,W-2*Margin,s.epubMessage,Font::ChatMeta);
+  }else{
+   c.text(Margin,Top+4,"SD /books/*.epub",Font::ChatMeta);
+   if(s.epubBooks.empty())c.centered(Margin,Top+55,W-2*Margin,"No EPUB files in /books",Font::Body);
+   for(int row=0;row<int(s.epubBooks.size());row++){Rect r=booksRowRect(row);bool focused=row==s.epubFocus;c.card(r,focused);auto ink=focused?BG:FG;c.icon(Icon::Notes,r.x+6,r.y+(r.h-24)/2,24,ink);c.text(r.x+37,r.y+9,s.epubBooks[row],Font::ChatBody,ink,r.w-45);}
+  }
  }else if(s.page==Page::Terminal){
   c.sectionLabel(Top+6,"SYSTEM");valueCard({Margin,Top+22,W-2*Margin,40},"FREE MEMORY / STACK",std::to_string(s.heapKB)+" KB / "+std::to_string(s.stackFree)+" B");
   valueCard(settingsHalf(0,Top+68),"CPU",std::to_string(s.cpuMHz)+" MHz");valueCard(settingsHalf(1,Top+68),"MESH RX / TX",std::to_string(s.radioPacketsRX)+" / "+std::to_string(s.radioPacketsTX));
