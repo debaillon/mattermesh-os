@@ -63,7 +63,6 @@ SET_LOOP_TASK_STACK_SIZE(UI_TASK_STACK_BYTES);
 #include "services/lock_messages.h"
 #include "services/lock_policy.h"
 #include "services/scope_policy.h"
-#include "services/touch_hold.h"
 #include "services/touch_pipeline.h"
 #include "mesh/companion_settings.h"
 #include "services/gps_position_policy.h"
@@ -98,14 +97,15 @@ bool sdReady=false, keyboardReady=false;
 static bool batteryLogOn=false;static uint32_t batteryLogAt=0,batteryLogRows=0;// Plus battery log (batteryLogLoop)
 // Keyboard languages (Settings > Keyboard languages, section 12): enabled set and the one typing now, NVS "mmkbd".
 uint32_t kbdMask=mm_kbd::DefaultMask;mm_kbd::Lang kbdLang=mm_kbd::Lang::Italian;String kbdQuery;bool kbdSearching=false;int kbdFocus=0;
-// Letter the accent key last typed: pressing the accent key again right after swaps it for the next variant.
 void loadKeyboardLanguages(){kbdMask=mm_kbd::sanitize(device::prefGetUInt("mmkbd","mask",mm_kbd::DefaultMask));kbdLang=mm_kbd::active(kbdMask,mm_kbd::Lang(constrain(device::prefGetInt("mmkbd","lang",0),0,mm_kbd::LangCount-1)));}
 bool saveKeyboardLanguages(){return device::prefPutUInt("mmkbd","mask",kbdMask)&&device::prefPutInt("mmkbd","lang",int(kbdLang));}
 void toggleKeyboardLanguage(int id);void switchKeyboardLanguage();
-std::vector<int> keyboardLanguageRows(){std::vector<int> rows;for(auto l:mm_kbd::Order)if(mm_kbd::matches(l,kbdQuery.c_str()))rows.push_back(int(l));return rows;}
-// Cyrillic layouts: a letter key typed into a message becomes its ЙЦУКЕН letter (menus, searches and passwords keep the keys).
+std::vector<int> keyboardLanguageRows(){return mm_kbd::rows(kbdQuery.c_str());}
+// Cyrillic layouts: a letter key typed into a message (composer or lock-screen quick reply) becomes its ЙЦУКЕН letter;
+// menus, searches and passwords keep the keys.
 std::string layoutLetter(char c){return mm_kbd::info(kbdLang).cyrillic&&((c>='a'&&c<='z')||(c>='A'&&c<='Z'))?mm_kbd::letter(kbdLang,c,c>='A'&&c<='Z'):std::string();}
 int accentTaps=0;bool accentTyped=false;// accent key taps before the next letter (1 = first variant ... 4) / a letter typed while it is held
+inline void accentReset(){accentTaps=0;accentTyped=false;}// dropped by Space, Backspace, the 0 key, a chat change, Back, lock / unlock and the quick reply opening, closing or sending
 String command, input;
 TouchDrvGT911 legacyTouch;
 int touchBackend=0;
@@ -116,7 +116,7 @@ bool deleteHeld=false;
 device::FirstRepeater firstRepeater;bool firstRepeaterPainted=false;String chatError;uint32_t chatErrorUntil=0;
 // A short message over the chat (send failures), cleared by the loop after `ms`.
 static inline void showChatError(const String &message,uint32_t ms){chatError=message;chatErrorUntil=millis()+ms;}
-uint8_t keyboardBrightness=180;bool forceFullRefresh=false,paintedLocked=false;uint32_t lastPhysicalPaint=0;
+uint8_t keyboardBrightness=180;bool forceFullRefresh=false;uint32_t lastPhysicalPaint=0;
 device::InputQueue keyboardQueue;bool batchingInput=false;uint32_t busyServiceCalls=0,lastRasterMs=0,lastPaintMs=0,renderCalls=0;
 constexpr uint32_t UI_INPUT_SETTLE_MS=0,UI_TYPING_FRAME_MS=16,UI_MIN_FRAME_MS=16;// LCD: repaint as soon as the input arrives, ~60 fps cap
 
@@ -131,7 +131,7 @@ device::LockEnter lockEnter;device::QuickReply quickReply;
 uint32_t quickCountdownAt=0;bool quickEmojiPicker=false;/* emoji picker open over the quick reply (Plus) */bool quickTxReady=false,quickTxSuccess=false;uint32_t quickTxToken=0;
 device::ReplyOriginal pendingQuickOriginal;uint32_t lockMessageShownAt=0,paintedLockToken=0;
 std::string lockReadError;bool consumeLockMessage(uint32_t token);
-void openQuickReply();void closeQuickReply();void sendQuickReply();void quickReplyKey(char c);void pollQuickReply();static void resolveQuickOriginal();static void lockShowNext(uint32_t token);static int quickCountdownDots();
+extern uint32_t quickReplyInputAt;void openQuickReply();void closeQuickReply();void sendQuickReply();void quickReplyKey(char c);void pollQuickReply();static void resolveQuickOriginal();static void lockShowNext(uint32_t token);static int quickCountdownDots();
 String lastReceivedChannel="Mesh messages";int lastReceivedChat=-1;bool lastReceivedRead=true;uint32_t lastReceivedToken=0;int paintedReadChat=-1;uint32_t paintedReadToken=0;uint16_t paintedUnread=0;
 String lastReceivedSender="No messages",lastReceivedBody="Waiting for mesh messages",lastReceivedTime="--:--";
 uint16_t unreadMessages[matter::CHAT_SLOTS]={};bool composerExpanded=false;int paintedComposerTop=mm::ComposerY;int inputCursor=-1;/* caret byte offset in input, -1 = end */
@@ -179,7 +179,7 @@ void applyTextSize(){
 }
 // One NVS integer: the default when the namespace cannot be opened; put reports whether all 4 bytes were written.
 void loadTextSize(){chatTextSize=device::prefGetInt("mmui","chatlg",1)?1:0;textSizeFocus=chatTextSize;applyTextSize();}
-bool setTextSize(int index){index=index?1:0;chatTextSize=index;applyTextSize();return device::prefPutInt("mmui","chatlg",index);}
+bool setTextSize(int index){index=index?1:0;if(!device::prefPutInt("mmui","chatlg",index))return false;chatTextSize=index;applyTextSize();return true;}// applied only once saved
 int lockWallpaper=0,wallpaperFocus=0;// theme index (mm::theme), persisted in NVS "mmlock"
 void loadWallpaper(){lockWallpaper=constrain(device::prefGetInt("mmlock","wall",0),0,WALLPAPER_COUNT-1);wallpaperFocus=lockWallpaper;
  mm::setTheme(lockWallpaper);
@@ -231,7 +231,7 @@ extern int accentMode,accentFocus;static bool accentContext();static bool accent
 void trackballBegin();bool appUsbLinked();void appLinkFill(mm::State &v);void linkFill(mm::State &v);bool linkBack();// link viewer (link_app.inc)
 // MeshCore app links (companion_app.inc)
 // A panel over the chat (options, position, details, scopes, clear, message actions/path, emoji picker).
-static bool chatOverlayOpen();
+
 // Touch browsing (Plus): the finger scrolls the view only, like a phone list; no row is highlighted until a key or the
 // trackball moves the focus again (then the focus is pulled back into the visible rows). chatsTop = first row shown.
 // First-boot welcome (Plus): Wi-Fi (and clock) -> band -> preset -> companion name -> path hash bytes -> summary; NVS mmsetup/done afterwards.
@@ -460,6 +460,7 @@ void channelOption(int index){
  if(index==0)notice=toggleChannelNotifications(channelOptionTarget)?"Notification setting saved":"Cannot save notifications";
  else if(index==1){if(chats[channelOptionTarget].direct)return;String key=channelKeys[channelOptionTarget];if(!key.length()&&!matter::channelSecret(channelOptionTarget,key)){notice="Key unavailable / radio not ready";render();return;}
   key.toLowerCase();channelKeyHex=key;channelQrSize=mm::encodeQr(mm::channelShareUrl(chats[channelOptionTarget].name.c_str(),key.c_str(),chats[channelOptionTarget].scope.c_str()),channelQr);channelKeyView=true;notice="";}
+ else if(!chats[channelOptionTarget].direct&&chats[channelOptionTarget].name=="Public")notice="Public cannot be deleted";
  else{deleteChannelConfirm=true;notice="";}render();
 }
 void deleteSelectedChannel(){
@@ -480,9 +481,10 @@ int directConversation(const String &key,const String &name){
 }
 void openConversation(int id,Screen parent,int parentSection=0){
  if(id<0||id>=chatCount)return;
+ accentReset();
  if(screen==Screen::Chat)chatDrafts.leave(activeChat,input);
  chatParent=parent;chatParentSection=parentSection;activeChat=selected=id;composerExpanded=false;chatDrafts.take(id,input);inputCursor=-1;
- archivePager.close();screen=Screen::Chat;chatOffset=0;chatPixel=0;searching=chatDetails=messageActions=messagePath=false;notice="";render();
+ archivePager.close();screen=Screen::Chat;chatOffset=0;chatPixel=0;searching=chatDetails=messageActions=messagePath=messageBodyView=false;notice="";render();
 }
 // Contacts page: a companion opens (or creates) its direct chat.
 void openContact(int index){auto page=matter::contacts(discoverFilter,contactQuery.c_str(),index,1);if(page.rows.empty())return;auto n=page.rows[0];if(n.type!=1){notice="Not a chat contact";render();return;}int id=directConversation(n.key,n.name);if(id<0){notice="Cannot save contact conversation";render();return;}openConversation(id,screen,section);}
@@ -553,10 +555,11 @@ static std::string megabytes(uint32_t bytes){char text[16];snprintf(text,sizeof(
 void fillOta(mm::State &v){
  auto o=device::otaState();using P=device::OtaPhase;v.otaConfirm=otaConfirm&&o.phase==P::Available;v.otaProgress=-1;
  switch(o.phase){
-  case P::Idle:v.otaStatus=o.rolledBack?"Update rolled back":o.installed?"Updated / checking soon":"Not checked";v.otaDetail=o.rolledBack?"The new build crashed: old one restored":"Checked automatically on Wi-Fi";v.otaAction="CHECK NOW";break;
+  case P::Idle:v.otaStatus=o.rolledBack?"Update rolled back":o.installed?"Updated / checking soon":"Not checked";v.otaDetail=o.rolledBack?"The new build did not start: old one restored":"Checked automatically on Wi-Fi";v.otaAction="CHECK NOW";break;
   case P::Checking:v.otaStatus="Checking...";v.otaDetail="";v.otaAction="";break;
   case P::UpToDate:v.otaStatus="Up to date";v.otaDetail="Checked "+std::to_string((millis()-o.checkedAt)/60000)+" min ago";v.otaAction="CHECK NOW";break;
-  case P::Available:{std::string notes=o.notes.c_str(),item;for(char ch:notes){if(ch==';'||ch==','||ch=='\n'){while(!item.empty()&&item[0]==' ')item.erase(0,1);if(!item.empty())v.otaNotes.push_back(item);item.clear();}else item+=ch;}while(!item.empty()&&item[0]==' ')item.erase(0,1);if(!item.empty())v.otaNotes.push_back(item);}
+  case P::Available:{std::string notes=o.notes.c_str(),item;auto add=[&]{while(!item.empty()&&item[0]==' ')item.erase(0,1);while(!item.empty()&&(item.back()==' '||item.back()=='\r'))item.pop_back();if(!item.empty())v.otaNotes.push_back(item);item.clear();};
+   for(char ch:notes){if(ch==';'||ch=='\n')add();else item+=ch;}add();}
    v.otaStatus=std::string(o.version.c_str())+" available";v.otaDetail=megabytes(o.size)+", signed release";/* the notes are listed under WHAT'S NEW */v.otaAction=v.otaConfirm?"ENTER AGAIN: INSTALL + RESTART":"INSTALL "+std::string(o.version.c_str());break;
   case P::Downloading:case P::Verifying:v.otaProgress=o.size?int(uint64_t(o.done)*100/o.size):0;v.otaStatus="Downloading "+std::to_string(v.otaProgress)+"%";v.otaDetail=megabytes(o.done)+" / "+megabytes(o.size)+", keep Wi-Fi on";v.otaAction="";break;
   case P::Restarting:v.otaStatus="Installed / restarting";v.otaDetail=o.message.c_str();v.otaAction="";break;
@@ -567,7 +570,7 @@ void fillOta(mm::State &v){
 void otaAction(){
  auto phase=device::otaState().phase;using P=device::OtaPhase;
  if(phase==P::Available){if(!otaConfirm){otaConfirm=true;render();return;}otaConfirm=false;notice=device::otaInstall()?"":"Install could not start";render();return;}
- if(phase!=P::Checking&&phase!=P::Downloading&&phase!=P::Restarting){otaConfirm=false;device::otaCheck();render();}
+ if(phase!=P::Checking&&phase!=P::Downloading&&phase!=P::Verifying&&phase!=P::Restarting){otaConfirm=false;device::otaCheck();render();}// otaCheck() refuses while busy too
 }
 mm::State uiStateBuild();
 mm::State uiState(){uint32_t t=micros();auto v=uiStateBuild();uiStateUs+=micros()-t;uiStateCalls++;return v;}
@@ -585,7 +588,8 @@ mm::State uiStateBuild(){
 v.radioTX=radio.tx;v.radioError=radio.error;v.radioFrequency=radio.config.frequency;v.radioBW=radio.config.bandwidth;v.radioSF=radio.config.sf;v.radioCR=radio.config.cr;v.radioPower=radio.config.power;v.radioPowerEditing=radioPowerEditing;v.radioPowerInput=radioPowerInput.c_str();v.radioName=radio.config.name.c_str();v.radioPathBytes=radio.config.pathBytes;v.radioDevicePage=radioDevicePage;v.radioDeviceFocus=radioDeviceFocus;v.radioPacketsRX=radio.received;v.radioPacketsTX=radio.sent;v.radioQueued=radio.queued;v.nodeCount=radio.nodes;v.radioFocus=radioFocus;v.nodeScroll=nodeScroll;
  if(section==2&&radioDraftLoaded){v.radioName=radioDraft.name.c_str();v.radioPathBytes=radioDraft.pathBytes;v.radioFrequency=radioDraft.frequency;v.radioBW=radioDraft.bandwidth;v.radioSF=radioDraft.sf;v.radioCR=radioDraft.cr;v.radioPower=radioDraft.power;v.radioEditField=radioEditField;v.radioPreset=radioPresetSelection;v.radioBand=radioBandSelection;v.radioDraftChanged=radioDraft.name!=radio.config.name||radioDraft.pathBytes!=radio.config.pathBytes||radioDraft.frequency!=radio.config.frequency||radioDraft.bandwidth!=radio.config.bandwidth||radioDraft.sf!=radio.config.sf||radioDraft.cr!=radio.config.cr||radioDraft.power!=radio.config.power;}
  if(!deviceLocked&&screen==Screen::Section&&section==1){auto page=matter::contacts(discoverFilter,contactQuery.c_str(),nodeScroll,mm::ContactRows);v.filteredNodeCount=page.total;v.contactLive=page.live;v.contactQuery=contactQuery.c_str();v.contactSearching=contactSearching;v.contactFocus=contactFocus;auto gps=device::locationState();bool here=gps.fix&&(gps.latitude!=0||gps.longitude!=0);for(auto &n:page.rows){mm::Node node;node.name=n.name.c_str();node.key=n.key.c_str();node.type=n.type;node.live=n.live;node.age=n.live?(millis()-n.seen)/1000:0;node.rssi=n.rssi;node.snr=n.snr;node.hops=n.hops;if(here&&(n.lat||n.lon)){double lat=n.lat/1e6,lon=n.lon/1e6;node.distance=mm::formatDistance(mm::geoDistanceMeters(gps.latitude,gps.longitude,lat,lon),mm::geoHeading(gps.latitude,gps.longitude,lat,lon));}v.nodes.push_back(node);}}
- v.caps=shiftHeld();v.accent=accentContext()&&(accentTaps>0||accentHeld());v.accentMode=accentMode;v.accentFocus=accentFocus;v.symbols=keyboardModifiers.symbols();
+ v.caps=shiftHeld();if(accentTaps&&!accentContext())accentReset();// a tap left in a chat ends with it, whatever path left it (an emoji picker opening too)
+ v.accent=accentContext()&&(accentTaps>0||accentHeld());v.accentTaps=accentTaps;v.accentMode=accentMode;v.accentFocus=accentFocus;v.symbols=keyboardModifiers.symbols();
  v.field=formField;v.newName=newName.c_str();v.newScope=newScope.c_str();v.newKey=newKey.c_str();v.newForm=newForm;v.messageMenuFocus=messageMenuFocus;
  // The manual clock editor: the welcome clock step and Settings > Date / time.
  if(screen==Screen::Welcome||(screen==Screen::Section&&section==16)){for(int i=0;i<5;i++)v.dtField[i]=dtField[i];v.dtFocus=dtFocus;}
@@ -651,12 +655,14 @@ void renderLauncher(){auto state=uiState();state.focus=launcherSelection;mm::Ren
 
 bool saveLights(){
  if(!sdReady){notice="SD unavailable";return false;}
- SD.mkdir("/maxchat");File f=SD.open("/maxchat/lights.conf",FILE_WRITE);
+ SD.mkdir("/maxchat");File f=SD.open("/maxchat/lights.tmp",FILE_WRITE);
  String row=String(keyboardBrightness)+" "+String(displayBrightness)+" 0 0\n";// keyboard, display; the last two fields (vibration on, level) are kept at 0 for the file format
- bool saved=f&&f.print(row)==row.length();if(f){f.flush();f.close();}notice=saved?"Settings saved":"Save failed";return saved;
+ bool saved=f&&f.print(row)==row.length();if(f){f.flush();f.close();}
+ saved=saved&&device::sdReplace(SD,"/maxchat/lights.tmp","/maxchat/lights.conf","/maxchat/lights.bak",false);if(!saved)SD.remove("/maxchat/lights.tmp");
+ notice=saved?"Settings saved":"Save failed";return saved;
 }
 void loadLights(){
- if(!sdReady)return;File f=SD.open("/maxchat/lights.conf");if(!f)return;
+ if(!sdReady)return;File f=SD.open(device::sdSavedPath(SD,"/maxchat/lights.conf","/maxchat/lights.bak"));if(!f)return;
  String v=f.readStringUntil('\n');int kb,ep,vibe=1,level=75;
  if(sscanf(v.c_str(),"%d %d %d %d",&kb,&ep,&vibe,&level)>=2&&kb>=0&&kb<=255&&ep>=0&&ep<=255){keyboardBrightness=kb;displayBrightness=ep;}
  f.close();
@@ -690,9 +696,8 @@ void openSection(int id,bool paint){
  else {sectionParent=screen==Screen::Launcher?Screen::Launcher:Screen::Home;screen=Screen::Section;}
  if(paint)render();
 }
-// Unlocked idle policy: nothing to draw, no input for 3 s, no radio/audio work -> 80 MHz and a 20 ms loop; any activity or frame brings 240 MHz back.
-bool idleCpuLoop(bool audioBusy){if(deviceLocked)return false;bool busy=dirty||radioDirty||quickReply.active||deleteHeld||touchPipeline.contactActive()||matter::busy()||audioBusy||uint32_t(millis()-device::powerState().lastActivity)<3000||uint32_t(millis()-lastPhysicalPaint)<1500;uint32_t want=busy?device::NORMAL_CPU_FREQUENCY:80;if(getCpuFrequencyMhz()!=want)setCpuFrequencyMhz(want);return !busy;}
-static bool chatOverlayOpen(){return channelOptions||positionShare||chatDetails||scopePicker||clearChatConfirm||messageActions||messagePath||emojiPicker;}
+// Unlocked idle policy: nothing to draw, no input for 3 s, no radio/audio/network work -> 80 MHz and a 20 ms loop; any activity or frame brings 240 MHz back.
+bool idleCpuLoop(bool audioBusy){if(deviceLocked)return false;bool busy=dirty||radioDirty||quickReply.active||device::networkJobActive()||deleteHeld||touchPipeline.contactActive()||matter::busy()||audioBusy||uint32_t(millis()-device::powerState().lastActivity)<3000||uint32_t(millis()-lastPhysicalPaint)<1500;uint32_t want=busy?device::NORMAL_CPU_FREQUENCY:80;if(getCpuFrequencyMhz()!=want)setCpuFrequencyMhz(want);return !busy;}
 void render(bool partialHint,int batteryPreview) {
  if(renderHold){renderPending=true;return;}// touchScroll: one frame for all the rows of a gesture step
  {static int seenScreen=-1,seenSection=-1;if(int(screen)!=seenScreen||section!=seenSection){seenScreen=int(screen);seenSection=section;touchBrowse=false;}}// touch browsing ends with the page
@@ -731,7 +736,7 @@ void render(bool partialHint,int batteryPreview) {
  panelPainting=true;touchTransition=frameScene!=visibleTouchScene;plan.changed=!plan.full&&!deviceLocked&&paintedScreen==paintPage&&paintedSection==section&&screen!=Screen::Chat?lcd.presentScrolling(frame.getBuffer()):lcd.present(frame.getBuffer(),plan.full);/* the chat scrolls pixel by pixel: no eased frames *//* same page: a vertical move is animated */panelPainting=false;if(plan.changed)lastPhysicalPaint=millis();
  paintedChatMessages.swap(renderedChatMessages);paintedChatConversation=frameChat;
  if(frameConfirmation)quickReply.didPaint(millis());
- if(deviceLocked&&!quickReply.active)paintedLockToken=frameLockToken;if(!deviceLocked)commitReadFrame();lastPaintMs=millis()-renderStarted;if(deviceLocked){renderedUnlockTaps=unlockTaps.taps;lockHintPainted=lockHintUntil&&int32_t(lockHintUntil-millis())>0;}paintedScreen=paintPage;paintedLocked=deviceLocked;paintedSection=section;dirty=false;lastPaint=millis();visibleTouchScene=frameScene;if(!touchDisplayReady)touchPipeline.waitForRelease();touchDisplayReady=true;touchTransition=false;paintedChannels.swap(renderedChannels);
+ if(deviceLocked&&!quickReply.active)paintedLockToken=frameLockToken;if(!deviceLocked)commitReadFrame();lastPaintMs=millis()-renderStarted;if(deviceLocked){renderedUnlockTaps=unlockTaps.taps;lockHintPainted=lockHintUntil&&int32_t(lockHintUntil-millis())>0;}paintedScreen=paintPage;paintedSection=section;dirty=false;lastPaint=millis();visibleTouchScene=frameScene;if(!touchDisplayReady)touchPipeline.waitForRelease();touchDisplayReady=true;touchTransition=false;paintedChannels.swap(renderedChannels);
  if(!appUsbLinked()&&Serial.availableForWrite()>=64)Serial.printf("UI_READY screen=%d active=%d redraw=%d full=%d\n",int(screen),activeChat,plan.changed,plan.full);
 
 }
@@ -817,6 +822,7 @@ void selectLoRaTab(bool device,bool focusTab=false){radioDevicePage=device;radio
 void activateRadioFocus(){if(radioFocus==0)cycleRadioPreset(1);else if(radioFocus<=5)editRadioField(radioFocus-1);else if(radioFocus==6)applyRadioDraft();else if(radioFocus>=8)selectLoRaTab(radioFocus==9);else{matter::advertise(notice);render();}}
 
 void back() {
+ accentReset();
  if(deviceLocked){if(quickReply.active)closeQuickReply();return;}
  if(screen==Screen::Section&&section==mm::KeyboardSection&&kbdSearching){kbdSearching=false;kbdQuery="";kbdFocus=0;render();return;}
  if(screen==Screen::Section&&mm::toolsSection(section)&&toolsBack())return;
@@ -887,7 +893,7 @@ void toolsTick(){cliTick();}
 int visibleApp=-1,visibleScene=-1;
 // Chat: the SD history page (24 records), the packet-route picture and the channel QR are
 // rebuilt on the next open, so they are released as soon as the chat leaves the screen.
-void chatLeft(){composerExpanded=false;archivePager.close();routeClose();messageRouteView=false;if(channelKeyView)closeChannelKey();contextMessage=mm::Message();}
+void chatLeft(){composerExpanded=false;messageActions=messagePath=messageBodyView=chatDetails=false;archivePager.close();routeClose();messageRouteView=false;if(channelKeyView)closeChannelKey();contextMessage=mm::Message();}
 void pickerLeft(){pickerContacts.clear();pickerContacts.shrink_to_fit();pickerQuery="";pickerSearching=false;}
 void formLeft(){wipeString(newKey);newName="";}
 void wifiPageLeft(){wipeString(wifiPassword);wifiTarget="";wifiEditing=wifiShowPassword=wifiHidden=false;}
@@ -910,7 +916,7 @@ static std::vector<int> emojiItems(){if(emojiTab==0){loadEmojiCounts();emojiRece
 static void openEmojiPicker(){messageActions=messagePath=chatDetails=false;emojiPicker=true;emojiTab=0;emojiFocus=0;if(emojiItems().empty())emojiTab=1;}// nothing used yet: first category
 static void emojiSwitchTab(int delta){emojiTab=(emojiTab+delta+mm::EmojiTabs)%mm::EmojiTabs;emojiFocus=0;}
 // Insert the focused glyph, count the use, close the picker.
-static void insertEmoji(int item){auto items=emojiItems();if(item<0||item>=int(items.size()))return;int index=items[item];String glyph=mm_emoji_picker::glyphs[index].text;
+static void insertEmoji(int item){if(deviceLocked)quickReplyInputAt=millis();auto items=emojiItems();if(item<0||item>=int(items.size()))return;int index=items[item];String glyph=mm_emoji_picker::glyphs[index].text;
  if(quickEmojiPicker&&quickReply.active){// quick reply on the lock screen
   size_t before=quickReply.text.size();quickReply.appendText(glyph.c_str());if(quickReply.text.size()!=before){mm::countEmoji(emojiCounts,index);saveEmojiCounts();}
   quickEmojiPicker=false;lockScreenDirty=true;render(true);return;}
@@ -1052,9 +1058,9 @@ void key(char c) {
    if((c=='w'||c=='k')&&kbdFocus>0){kbdFocus--;render();return;}if((c=='s'||c=='j')&&kbdFocus+1<int(rows.size())){kbdFocus++;render();return;}
    if((c=='\n'||c==' ')&&kbdFocus<int(rows.size())){toggleKeyboardLanguage(rows[kbdFocus]);return;}
    return;}
-  if(section==mm::AccentKeySection){if(c=='l'||c=='j')accentFocus=(accentFocus+1)%3;else if(c=='h'||c=='k')accentFocus=(accentFocus+2)%3;else if(c=='\n'||c==' ')notice=setAccentMode(accentFocus)?"Accent key applied":"Save failed";render();return;}
+  if(section==mm::AccentKeySection){if(c=='l'||c=='j'){accentFocus=(accentFocus+1)%3;notice="";}else if(c=='h'||c=='k'){accentFocus=(accentFocus+2)%3;notice="";}else if(c=='\n'||c==' '){bool ok=setAccentMode(accentFocus);notice=ok?"Accent key applied":"Save failed";if(!ok)accentFocus=accentMode;}render();return;}
   if(section==mm::SupportSection){if(c=='j'||c=='k'||c=='h'||c=='l'||c=='d'||c=='\n'||c==' '){supportTab=1-supportTab;render();}return;}
-  if(section==mm::TextSizeSection){if(c=='j'||c=='l'||c=='k'||c=='h'){textSizeFocus=1-textSizeFocus;render();}else if(c=='\n'||c==' '){notice=setTextSize(textSizeFocus)?"Text size applied":"Save failed";render();}return;}
+  if(section==mm::TextSizeSection){if(c=='j'||c=='l'||c=='k'||c=='h'){textSizeFocus=1-textSizeFocus;render();}else if(c=='\n'||c==' '){bool ok=setTextSize(textSizeFocus);notice=ok?"Text size applied":"Save failed";if(!ok)textSizeFocus=chatTextSize;render();}return;}
   if(section==22){if(c=='j'||c=='l'){wallpaperFocus=(wallpaperFocus+1)%WALLPAPER_COUNT;render();}else if(c=='k'||c=='h'){wallpaperFocus=(wallpaperFocus+WALLPAPER_COUNT-1)%WALLPAPER_COUNT;render();}else if(c=='\n'||c==' '){notice=setWallpaper(wallpaperFocus)?("Theme applied"):"Save failed";render();}return;}
   if(section==20){if(c=='j'||c=='k'){powerField=1-powerField;render();}else if(c=='\n'||c==' '){auto power=device::powerState();uint32_t current=powerField?power.keyboardSeconds:power.displaySeconds;int i=0;while(i<6&&device::TIMEOUT_VALUES[i]!=current)i++;device::timeout(powerField!=0,device::TIMEOUT_VALUES[(i+1)%6]);render();}return;}
   if(section==4){auto connection=device::connectivityStatus();if(c=='h'){hiddenWifi();return;}else if(c=='x'){device::disconnect();render();return;}else if(c=='r'){device::reconnect();render();return;}else if(c=='f'){device::scan();render();}else if(c==' '){device::wifiEnabled(!connection.wifi);render();}else if(c=='j'||c=='k'||c=='w'||c=='s'){wifiFocus=constrain(wifiFocus+((c=='j'||c=='s')?1:-1),0,max(0,int(connection.networkCount)-1));wifiOffset=wifiFocus/mm::WifiRows*mm::WifiRows;render();}else if(c=='\n'||c=='d')selectWifi(wifiFocus);return;}
@@ -1112,7 +1118,7 @@ void key(char c) {
   if(emojiPicker){int k=emojiPickerKey(c);if(k==2){insertEmoji(emojiFocus);return;}if(!k&&c==3)emojiPicker=false;render();return;}
   if(c=='\n'){submitLocal();return;}
   else if(c=='@'){openMentionPicker();return;}// Plus: "@" opens the people search, the pick inserts @[name]
-  else if(c>=32&&c<=126){auto cyr=layoutLetter(c);String text=cyr.empty()?String(c):String(cyr.c_str());if(input.length()+text.length()<=messageByteLimit()){inputInsert(text);}}
+  else if(c>=32&&c<=126){auto cyr=layoutLetter(c);String text=cyr.empty()?String(c):String(cyr.c_str());if(input.length()+text.length()<=messageByteLimit())inputInsert(text);else{notice=matter::messageLimitError(messageByteLimit()).c_str();repaintSettled();return;}}
   notice="";repaintSettled();
  }
 }
@@ -1152,7 +1158,7 @@ void quickSettingsTap(int x,int y){
 void tap(int x,int y) {
  if(x<0||x>=mm::W||y<0||y>=mm::H)return;
  if(screen==Screen::Welcome&&!deviceLocked){device::activity();welcomeTap(x,y);return;}
- if(deviceLocked){if(quickReply.active){if(quickEmojiTap(x,y))return;if(mm::QuickReplySend.contains(x,y))sendQuickReply();else if(mm::QuickReplyCancel.contains(x,y)||mm::BackButton.contains(x,y))closeQuickReply();}return;}device::activity();
+ if(deviceLocked){if(quickReply.active){quickReplyInputAt=millis();if(quickEmojiTap(x,y))return;if(mm::QuickReplySend.contains(x,y))sendQuickReply();else if(mm::QuickReplyCancel.contains(x,y)||mm::BackButton.contains(x,y))closeQuickReply();}return;}device::activity();
  if(channelOptions){if(mm::BackButton.contains(x,y)){back();return;}if(deleteChannelConfirm){if(mm::ChatClearYes.contains(x,y))deleteSelectedChannel();else if(mm::ChatClearNo.contains(x,y))back();}else if(channelKeyView)back();else{const bool direct=chats[channelOptionTarget].direct;for(int slot=0;slot<(direct?2:3);slot++)if(mm::channelOptionRect(slot).contains(x,y)){channelOption(direct&&slot==1?2:slot);break;}}return;}
  Serial.printf("TOUCH_TAP x=%d y=%d screen=%d\n",x,y,int(screen));
  // Status bar: opens Quick settings from any screen; tapping it there closes the panel.
@@ -1179,12 +1185,12 @@ void tap(int x,int y) {
   if(section==16){if(mm::DateTimeSet.contains(x,y)){String reason;notice=dtApply(reason)?"Date and time set":reason;render();return;}
    for(int i=0;i<5;i++){mm::Rect r=mm::dateTimeBox(i);if(r.contains(x,y)){dtFocus=i;dtStep(i,y<r.y+r.h/2?1:-1);notice="";render();return;}}return;}
   if(section==mm::KeyboardSection){if(mm::KeyboardSearch.contains(x,y)){kbdSearching=true;render();return;}
-   auto rows=keyboardLanguageRows();int first=std::max(0,std::min(kbdFocus,int(rows.size())-1)-mm::KeyboardRows+1);
+   auto rows=keyboardLanguageRows();int first=mm_kbd::firstRow(kbdFocus,int(rows.size()),mm::KeyboardRows);
    for(int i=0;i<mm::KeyboardRows&&first+i<int(rows.size());i++)if(mm::keyboardRowRect(i).contains(x,y)){kbdSearching=false;kbdFocus=first+i;toggleKeyboardLanguage(rows[first+i]);return;}
    return;}
-  if(section==mm::AccentKeySection){for(int i=0;i<3;i++)if(mm::accentCardRect(i).contains(x,y)){accentFocus=i;notice=setAccentMode(i)?"Accent key applied":"Save failed";render();return;}return;}
+  if(section==mm::AccentKeySection){for(int i=0;i<3;i++)if(mm::accentCardRect(i).contains(x,y)){bool ok=setAccentMode(i);notice=ok?"Accent key applied":"Save failed";accentFocus=ok?i:accentMode;render();return;}return;}
   if(section==mm::SupportSection){for(int i=0;i<2;i++)if(mm::supportTabRect(i).contains(x,y)&&supportTab!=i){supportTab=i;render();}return;}
-  if(section==mm::TextSizeSection){for(int i=0;i<2;i++)if(mm::textSizeCardRect(i).contains(x,y)){textSizeFocus=i;notice=setTextSize(i)?"Text size applied":"Save failed";render();return;}return;}
+  if(section==mm::TextSizeSection){for(int i=0;i<2;i++)if(mm::textSizeCardRect(i).contains(x,y)){bool ok=setTextSize(i);notice=ok?"Text size applied":"Save failed";textSizeFocus=ok?i:chatTextSize;render();return;}return;}
   if(section==22){for(int i=0;i<WALLPAPER_COUNT&&i<mm::WallpaperCardCount;i++)if(mm::wallpaperCardRect(i).contains(x,y)){wallpaperFocus=i;notice=setWallpaper(i)?("Theme applied"):"Save failed";render();return;}return;}
   if(section==20){for(int i=0;i<2;i++)if(mm::powerRowRect(i).contains(x,y)){powerField=i;render();return;}for(int i=0;i<6;i++)if(mm::timeoutOptionRect(i).contains(x,y)){notice=device::timeout(powerField!=0,device::TIMEOUT_VALUES[i])?"Timeout saved":"Save failed";render();return;}return;}
   if(section==4){if(wifiEditing){if(mm::WifiEye.contains(x,y)){wifiShowPassword=!wifiShowPassword;render();return;}if(mm::WifiSSIDInput.contains(x,y)&&wifiHidden){wifiEditField=0;render();return;}if(mm::WifiPassword.contains(x,y)){wifiEditField=1;render();return;}if(mm::WifiConnect.contains(x,y)){connectWifi();return;}if(mm::WifiCancel.contains(x,y)){wifiPassword="";wifiEditing=false;wifiShowPassword=false;render();return;}return;}if(mm::WifiToggle.contains(x,y)){device::wifiEnabled(!device::connectivityStatus().wifi);render();return;}if(mm::WifiScan.contains(x,y)){device::scan();render();return;}if(mm::WifiManual.contains(x,y)){hiddenWifi();return;}if(mm::WifiDisconnect.contains(x,y)){if(device::connectivityStatus().connected||device::connectivityStatus().connecting)device::disconnect();else device::reconnect();render();return;}for(int row=0;row<mm::WifiRows;row++)if(mm::wifiRowRect(row).contains(x,y)){selectWifi(wifiOffset+row);return;}}
@@ -1321,7 +1327,8 @@ void swipe(int dy) {if(deviceLocked)return;
   return;
  }
  if(screen!=Screen::Chats)return;
- selected=dy<0?min(chatCount-1,selected+7):max(0,selected-7);render();
+ auto list=conversationList();if(list.empty())return;int at=-1;for(int i=0;i<int(list.size());i++)if(list[i].id==selected)at=i;// -1: the Messages menu row above the list
+ if(at<0&&dy>=0)return;at=dy<0?min(int(list.size())-1,at+7):max(0,at-7);selected=list[at].id;render();// rows as shown (by activity), not chat ids
 }
 void initKeyboard() {
  keyboardReady=keyboard.begin(BOARD_I2C_ADDR_KEYBOARD,&Wire);
@@ -1329,49 +1336,58 @@ void initKeyboard() {
  plus::Trackball::begin();trackballBegin();
 }
 // Accent key (Settings > Accent key, NVS "mmui"/"accent": 0 off, 1 right Shift, the default, 2 left Shift). Only in
-// chats (the message composer and Quick Reply): held, the accented letters show on screen and every vowel typed
-// meanwhile is accented; tapped, it stays armed for the next letter (a second tap disarms). Elsewhere, or when off,
-// both Shift keys type capitals.
+// chats (the message composer and Quick Reply): tapped before a letter it picks the accented variant (1 tap the
+// first, 2 taps the second ... up to 4, a fifth tap disarms); held, every letter typed meanwhile takes the first.
+// Elsewhere, or when off, both Shift keys type capitals.
 int accentMode=1,accentFocus=1;
 static int accentCode(){return accentMode==1?31:accentMode==2?35:-1;}// TCA8418 codes: right Shift 31, left Shift 35
-static bool accentContext(){return deviceLocked?quickReply.active&&quickReply.editable():screen==Screen::Chat&&!emojiPicker&&editableField()==&input;}
+static bool accentContext(){return deviceLocked?quickReply.active&&quickReply.editable()&&!quickEmojiPicker:screen==Screen::Chat&&!emojiPicker&&editableField()==&input;}
 static bool accentHeld(){int code=accentCode();return code>=0&&accentContext()&&(code==35?keyboardModifiers.leftShift:keyboardModifiers.rightShift);}
 static bool shiftHeld(){int code=accentContext()?accentCode():-1;return (keyboardModifiers.leftShift&&code!=35)||(keyboardModifiers.rightShift&&code!=31);}
 void loadAccentMode(){accentMode=constrain(device::prefGetInt("mmui","accent",1),0,2);accentFocus=accentMode;}
-bool setAccentMode(int mode){if(mode<0||mode>2)return false;if(!device::prefPutInt("mmui","accent",mode))return false;accentMode=mode;accentTaps=0;accentTyped=false;return true;}
-void accentKey(bool pressed){if(pressed){accentTaps=accentTaps>=4?0:accentTaps+1;accentTyped=false;}else if(accentTyped){accentTaps=0;accentTyped=false;}if(deviceLocked)lockScreenDirty=true;else repaintSettled();}
-// Letters of the keyboard language go to the message composer and the lock-screen quick reply; menus keep the keys.
-static bool typingMessage(){return deviceLocked?quickReply.active:screen==Screen::Chat&&!emojiPicker&&editableField()==&input;}
+bool setAccentMode(int mode){if(mode<0||mode>2)return false;if(!device::prefPutInt("mmui","accent",mode))return false;accentMode=mode;accentReset();return true;}
+void accentKey(bool pressed){if(pressed){if(deviceLocked)quickReplyInputAt=millis();accentTaps=accentTaps>=4?0:accentTaps+1;accentTyped=false;}else if(accentTyped){accentTaps=0;accentTyped=false;}if(deviceLocked)lockScreenDirty=true;else repaintSettled();}
 static void typeText(const std::string &text){
  device::activity();
- if(deviceLocked){quickReply.appendText(text);lockScreenDirty=true;return;}
+ if(deviceLocked){quickReplyInputAt=millis();quickReply.appendText(text);lockScreenDirty=true;return;}
  if(input.length()+text.size()<=messageByteLimit()){inputInsert(String(text.c_str()));notice="";}else notice=matter::messageLimitError(messageByteLimit()).c_str();
  repaintSettled();
 }
 // The accented letter for `taps` accent presses before it (0 = accent held); "" when the key has none in this language.
 std::string accentedText(char ch,int taps){
  bool upper=ch>='A'&&ch<='Z';int index=taps>0?taps-1:0;
- if(kbdLang==mm_kbd::Lang::Italian&&index==0){// Italian keeps its word rules (perché, È at a sentence start)
+ if(index>=mm_kbd::variants(kbdLang,ch).count)return std::string();// no variant at this count: the key types plainly (the bar lists none)
+ if(kbdLang==mm_kbd::Lang::Italian){// word rules (perché, È at a sentence start); two taps on e give the other e (è <-> é)
   std::string before=deviceLocked?quickReply.text:std::string(input.substring(0,cursorAt()).c_str());
-  return device::accented(ch,before,upper);
+  std::string text=device::accented(ch,before,upper);if(index==0)return text;
+  static const std::pair<const char*,const char*> swap[]={{"\xc3\xa8","\xc3\xa9"},{"\xc3\xa9","\xc3\xa8"},{"\xc3\x88","\xc3\x89"},{"\xc3\x89","\xc3\x88"}};
+  for(auto &p:swap)if(text==p.first)return p.second;return text;
  }
  return mm_kbd::variant(kbdLang,ch,index,upper);
 }
+// A letter key while the accent is armed or held: the accented letter is typed and the key consumed (true).
 bool typeAccented(char ch,int taps){
- if(!typingMessage())return false;
+ if(!accentContext())return false;
  auto text=accentedText(ch,taps);if(text.empty())return false;
  typeText(text);return true;
+}
+static bool accentLetter(char ch){
+ if(!(accentTaps>0||accentHeld()))return false;
+ int taps=accentTaps;bool held=accentHeld();accentTaps=0;if(held)accentTyped=true;
+ return !keyboardModifiers.symbols()&&typeAccented(ch,taps);
 }
 // Settings > Keyboard languages: turn the focused language on or off (one always stays on).
 void toggleKeyboardLanguage(int id){
  uint32_t bit=1u<<id;if((kbdMask&bit)&&mm_kbd::enabledCount(kbdMask)==1){notice="One language always stays on";render();return;}
- auto before=kbdLang;kbdMask^=bit;kbdLang=(kbdMask&bit)&&mm_kbd::enabledCount(kbdMask)==1?mm_kbd::Lang(id):mm_kbd::active(kbdMask,kbdLang);
+ auto before=kbdLang;kbdMask^=bit;kbdLang=mm_kbd::active(kbdMask,kbdLang);
  // Not saved: back to what was on, so the page matches NVS (the mask may already have been written: write it back too)
  if(saveKeyboardLanguages())notice="";else{kbdMask^=bit;kbdLang=before;saveKeyboardLanguages();notice="Save failed";}render();
 }
 void switchKeyboardLanguage(){
- kbdLang=mm_kbd::next(kbdMask,kbdLang);saveKeyboardLanguages();
- String name=mm_kbd::info(kbdLang).name;if(deviceLocked)lockScreenDirty=true;else{if(screen==Screen::Chat)showChatError("Keyboard: "+name,1500);else notice="Keyboard: "+name;repaintSettled();}
+ auto before=kbdLang;kbdLang=mm_kbd::next(kbdMask,kbdLang);// only the language changes: the enabled set is already saved
+ bool saved=device::prefPutInt("mmkbd","lang",int(kbdLang));if(!saved)kbdLang=before;
+ String text=saved?"Keyboard: "+String(mm_kbd::info(kbdLang).name):String("Save failed");
+ if(deviceLocked)lockScreenDirty=true;else{if(screen==Screen::Chat)showChatError(text,1500);else notice=text;repaintSettled();}
 }
 void pollBanners(){
  if(deviceLocked)return;
@@ -1393,31 +1409,32 @@ void keyboardEvent(int event,uint32_t capturedAt=0,bool hardwareDebounced=false)
   }else if(quickReply.active){
    if(code==accentCode()&&(!pressed||accentContext()))accentKey(pressed);
    if(keyboardModifiers.update(code,pressed))return;
-   if(code==device::SPACE_KEYCODE){if(pressed&&keyboardModifiers.alt&&mm_kbd::enabledCount(kbdMask)>=2){switchKeyboardLanguage();return;}if(pressed){accentTaps=0;quickReplyKey(' ');}return;}
-   int k=code-1;if(k<0||k>=40)return;if(code==device::MICROPHONE_KEYCODE){if(pressed&&keyboardModifiers.symbols())quickReplyKey('0');return;}
+   if(code==device::SPACE_KEYCODE){if(pressed&&keyboardModifiers.alt&&mm_kbd::enabledCount(kbdMask)>=2){switchKeyboardLanguage();return;}if(pressed){accentReset();quickReplyKey(' ');}return;}
+   int k=code-1;if(k<0||k>=40)return;if(code==device::MICROPHONE_KEYCODE){if(pressed){accentReset();if(keyboardModifiers.symbols())quickReplyKey('0');}return;}
    char ch=keys[k/10][9-k%10];
-   if(ch=='\b'){deleteHeld=pressed;if(pressed){deleteAt=repeatAt=millis();quickReplyKey('\b');}return;}
-   if(pressed){int taps=accentTaps;bool held=accentHeld(),accent=(taps>0||held)&&!keyboardModifiers.symbols();accentTaps=0;if(accent&&held)accentTyped=true;if(keyboardModifiers.symbols())ch=symbols[k/10][9-k%10];else if(shiftHeld()&&ch>='a'&&ch<='z')ch=ch-'a'+'A';if(accent&&typeAccented(ch,taps))return;if(ch)quickReplyKey(ch);}
+   if(ch=='\b'){deleteHeld=pressed;if(pressed){accentReset();deleteAt=repeatAt=millis();quickReplyKey('\b');}return;}
+   if(pressed){if(keyboardModifiers.symbols())ch=symbols[k/10][9-k%10];else if(shiftHeld()&&ch>='a'&&ch<='z')ch=ch-'a'+'A';if(accentLetter(ch))return;if(ch)quickReplyKey(ch);}
   }else if(pressed)showLockHint();// Plus: the trackball unlocks, Space only shows the hint
   return;
  }
- if(code==device::SPACE_KEYCODE){if(pressed&&keyboardModifiers.alt&&mm_kbd::enabledCount(kbdMask)>=2){device::activity();switchKeyboardLanguage();return;}if(pressed)accentTaps=0;{if(pressed){device::activity();key(' ');}return;}}// Alt + Space: next keyboard language// Plus: Space is only a space (the trackball locks)
+ // Alt + Space: next keyboard language; otherwise Space is only a space (the Plus locks with the trackball)
+ if(code==device::SPACE_KEYCODE){if(pressed&&keyboardModifiers.alt&&mm_kbd::enabledCount(kbdMask)>=2){device::activity();switchKeyboardLanguage();return;}if(pressed){accentReset();device::activity();key(' ');}return;}
  if(pressed)device::activity();int k=(event&0x7f)-1;
  if(k<0||k>=40)return;
- if(code==device::MICROPHONE_KEYCODE){if(pressed)key('0');return;}// no dictation on the Plus: the MIC key is the digit 0
+ if(code==device::MICROPHONE_KEYCODE){if(pressed){accentReset();key('0');}return;}// no dictation on the Plus: the MIC key is the digit 0
  keyboardEvents++;if(code==accentCode()&&(!pressed||accentContext()))accentKey(pressed);if(keyboardModifiers.update(code,pressed)){repaintSettled();return;}int r=k/10,c=9-k%10;char ch=keys[r][c];
- if(screen==Screen::Chat&&pressed&&keyboardModifiers.alt&&shiftHeld()&&editableField()==&input&&(ch=='w'||ch=='s')){scrollChat(ch=='w'?1:-1);return;}
+ if(screen==Screen::Chat&&pressed&&keyboardModifiers.alt&&(keyboardModifiers.leftShift||keyboardModifiers.rightShift)&&editableField()==&input&&(ch=='w'||ch=='s')){if(accentHeld())accentTyped=true;scrollChat(ch=='w'?1:-1);return;}// the accent Shift used here does not stay armed
  if(screen==Screen::Section&&section==4&&wifiEditing&&pressed&&keyboardModifiers.alt&&ch=='v'){wifiShowPassword=!wifiShowPassword;render();return;}
  if(screen==Screen::Section&&section==mm::CliSection&&pressed&&keyboardModifiers.alt&&cliAltKey(ch))return;
  if(ch=='\b'){
   auto field=editableField();deleteHeld=pressed&&field&&field->length();
-  if(pressed){deleteAt=repeatAt=millis();key('\b');}return;
+  if(pressed){accentReset();deleteAt=repeatAt=millis();key('\b');}return;
  }
  if(!pressed)return;
  if(keyboardModifiers.symbols())ch=symbols[r][c];
  else if(shiftHeld()&&ch>='a'&&ch<='z')ch=ch-'a'+'A';
+ if(accentLetter(ch))return;
  // Menu shortcuts remain case-insensitive when caps mode is enabled.
- if(accentTaps>0||accentHeld()){int taps=accentTaps;bool held=accentHeld(),accent=!keyboardModifiers.symbols();accentTaps=0;if(held)accentTyped=true;if(accent&&typeAccented(ch,taps))return;}
  ch=device::keyboardCase(ch,(screen==Screen::Chats&&!searching)||(screen==Screen::PickContact&&!pickerSearching)||screen==Screen::Home||screen==Screen::Launcher||screen==Screen::Section,editableField()!=nullptr);
  if(event&128)device::activity();
  if(ch)key(ch);
@@ -1504,26 +1521,27 @@ static void resolveQuickOriginal(){pendingQuickOriginal=device::ReplyOriginal{};
 static void lockShowNext(uint32_t token){lockHintUntil=0;if(consumeLockMessage(token)){if(lockMessages.current==token||!lockMessages.current)lockMessages.next(lockMessageTokens());else lockMessages.receive(lockMessageTokens(),lockMessages.current);}lockMessageShownAt=millis();lockScreenDirty=true;}
 static int quickCountdownDots(){return min(2,int((millis()-quickCountdownAt)*2/device::QUICK_REPLY_HOLD_MS)+1);}
 void openQuickReply(){
- quickEmojiPicker=false;if(deviceLocked&&!quickReply.active)resolveQuickOriginal();
+ quickEmojiPicker=false;accentReset();quickReplyInputAt=millis();if(deviceLocked&&!quickReply.active)resolveQuickOriginal();
  if(!deviceLocked||quickReply.active||!quickReply.open(pendingQuickOriginal,messageByteLimit(pendingQuickOriginal.chat))){quickCountdownAt=0;lockScreenDirty=true;return;}
  quickCountdownAt=0;if(lockEnter.down)lockEnter.consumed=true;// the ENTER still held must not send the empty reply
  unlockTaps.reset();unlockCountdownAt=lockHintUntil=0;keyboardModifiers.reset();deleteHeld=false;
  setCpuFrequencyMhz(device::NORMAL_CPU_FREQUENCY);device::unlockLightPreview(true);setTouchEnabled(true);lockScreenDirty=true;render(true);
 }
 void closeQuickReply(){
- quickEmojiPicker=false;
+ quickEmojiPicker=false;accentReset();
  quickReply.close();keyboardModifiers.reset();deleteHeld=false;if(lockEnter.down)lockEnter.consumed=true;
  unlockTaps.reset();unlockCountdownAt=lockHintUntil=0;device::unlockLightPreview(false);setTouchEnabled(false);restoreLockedCpu();lockScreenDirty=true;render(true);
 }
 void sendQuickReply(){
- quickEmojiPicker=false;
+ quickEmojiPicker=false;accentReset();quickReplyInputAt=millis();
  if(!quickReply.editable())return;
  uint32_t token=0;
  bool accepted=quickReply.send([&](int chat,const std::string &scope,const std::string &body,std::string &error){String region=scope.c_str();bool ok=queueRadioMessage(body.c_str(),region.isEmpty()?nullptr:&region,chat,&token);error=notice.c_str();return ok;});
  if(accepted)quickReply.txToken=token;
  lockScreenDirty=true;render(true);
 }
-void quickReplyKey(char c){
+uint32_t quickReplyInputAt=0;// last key or touch in the quick reply (pollQuickReply closes it after a minute idle)
+void quickReplyKey(char c){quickReplyInputAt=millis();
  if(!quickReply.active)return;
  if(quickEmojiPicker){quickEmojiKey(c);return;}
  if(c==3){closeQuickReply();return;}if(c=='\n'){sendQuickReply();return;}
@@ -1533,12 +1551,14 @@ void quickReplyKey(char c){
 }
 void pollQuickReply(){
  if(quickTxReady){quickTxReady=false;uint32_t original=quickReply.original.token;
-  if(quickReply.complete(quickTxToken,quickTxSuccess)){
+  if(quickReply.complete(quickTxToken,quickTxSuccess)){quickReplyInputAt=millis();// the result gets its own minute
    if(quickTxSuccess){consumeLockMessage(original);lockMessages.reset(lockMessageTokens());lockMessageShownAt=millis();lockScreenDirty=true;}
    else lockScreenDirty=true;
   }
  }
  if(quickReply.confirmationExpired(millis()))closeQuickReply();
+ // Left open in a pocket: a minute without keys or touches closes it (the text is not sent).
+ if(quickReply.active&&quickReply.editable()&&uint32_t(millis()-quickReplyInputAt)>=60000UL)closeQuickReply();// a send waiting for the radio, or its result, stays
 
  if(quickCountdownAt){if(!deviceLocked||quickReply.active)quickCountdownAt=0;else{uint32_t held=millis()-quickCountdownAt;static int paintedDots=-1;int dots=quickCountdownDots();
   if(held>=device::QUICK_REPLY_HOLD_MS){paintedDots=-1;openQuickReply();}else if(dots!=paintedDots){paintedDots=dots;lockScreenDirty=true;}}}
@@ -1546,11 +1566,11 @@ void pollQuickReply(){
 }
 void enterLockMode(){
  device::audioCancel();previousScreen=screen;deviceLocked=true;quickTxReady=false;quickReply.close();quickCountdownAt=0;quickEmojiPicker=false;lockReadError.clear();lockEnter.reset();trackballUnlockTaps=0;unlockTaps.reset();lockMessages.reset(lockMessageTokens());lockMessageShownAt=millis();lockHintUntil=unlockCountdownAt=0;lockHintPainted=false;renderedUnlockTaps=-1;
- chatErrorUntil=0;deleteHeld=false;keyboardModifiers.reset();setTouchEnabled(false);enterLowPowerMode();lockMinute=time(nullptr)/60;lockScreenDirty=false;
+ chatErrorUntil=0;deleteHeld=false;keyboardModifiers.reset();accentReset();setTouchEnabled(false);enterLowPowerMode();lockMinute=time(nullptr)/60;lockScreenDirty=false;
  bool batched=batchingInput;batchingInput=false;render();batchingInput=batched;
 }
 void exitLockMode(){
- exitLowPowerMode();deviceLocked=false;quickCountdownAt=0;quickEmojiPicker=false;trackballUnlockTaps=0;unlockTaps.reset();lockHintUntil=unlockCountdownAt=0;lockKey.down=lockKey.consumed=false;lockKey.progress=0;
+ exitLowPowerMode();deviceLocked=false;accentReset();quickCountdownAt=0;quickEmojiPicker=false;trackballUnlockTaps=0;unlockTaps.reset();lockHintUntil=unlockCountdownAt=0;lockKey.down=lockKey.consumed=false;lockKey.progress=0;
  quickReply.close();lockEnter.reset();if(activeChat>=0&&activeChat<MAX_CHATS&&!input.isEmpty()){chatDrafts.saved[activeChat]=input;input="";inputCursor=-1;}
  scopePicker=scopeEditing=clearChatConfirm=chatDetails=messageActions=messagePath=emojiPicker=channelOptions=deleteChannelConfirm=positionShare=false;scopeInput="";notice="";navigation.clear();
  screen=Screen::Home;homeSelection=-1;
@@ -1576,6 +1596,7 @@ void pollLockKey(){
   if(unlockCountdownAt&&uint32_t(now-unlockCountdownAt)>=device::UNLOCK_COUNTDOWN_MS){exitLockMode();return;}
   bool held=unlockTaps.down;if(unlockTaps.expire(now)){if(held)lockRecoveries++;device::unlockLightPreview(false);restoreLockedCpu();lockScreenDirty=true;}
   bool hint=lockHintUntil&&int32_t(lockHintUntil-now)>0;if(hint!=lockHintPainted||unlockTaps.taps!=renderedUnlockTaps){lockHintPainted=hint;lockScreenDirty=true;}
+  static bool jobSeen=false;bool job=device::networkJobActive();if(job!=jobSeen){jobSeen=job;restoreLockedCpu();}
   if(!unlockTaps.active()&&millis()-lockedCpuPollAt>=500){lockedCpuPollAt=millis();restoreLockedCpu();}return;
  }
 }
@@ -1608,6 +1629,7 @@ void handle(const String &s) {
  if(s=="storm check"){device::stormRefresh();Serial.println("STORM_CHECK queued");return;}
  if(s.startsWith("time set ")){int v[5];if(sscanf(s.c_str()+9,"%d-%d-%d %d:%d",&v[2],&v[1],&v[0],&v[3],&v[4])==5){for(int i=0;i<5;i++)dtField[i]=v[i];String reason;bool ok=dtApply(reason);Serial.printf("TIME_SET ok=%d %s\n",ok,reason.c_str());}else Serial.println("TIME_SET ok=0 use: time set YYYY-MM-DD HH:MM");render();return;}
  if(s.startsWith("accent set ")){bool ok=setAccentMode(s.substring(11).toInt());accentFocus=accentMode;Serial.printf("ACCENT_SET ok=%d mode=%d\n",ok,accentMode);render();return;}
+ if(s=="composer text"){Serial.print("COMPOSER_TEXT hex=");for(unsigned i=0;i<input.length();i++)Serial.printf("%02x",uint8_t(input[i]));Serial.printf(" quick=");for(auto ch:quickReply.text)Serial.printf("%02x",uint8_t(ch));Serial.println();return;}
  if(s=="keyboard languages"){Serial.printf("KEYBOARD_LANGUAGES mask=%lu current=%s enabled=%d focus=%d searching=%d query_len=%u taps=%d\n",(unsigned long)kbdMask,mm_kbd::info(kbdLang).code,mm_kbd::enabledCount(kbdMask),kbdFocus,kbdSearching,unsigned(kbdQuery.length()),accentTaps);return;}
  if(s=="accent status"){Serial.printf("ACCENT_STATUS mode=%d key=%d context=%d taps=%d held=%d shift=%d\n",accentMode,accentCode(),accentContext(),accentTaps,accentHeld(),shiftHeld());return;}
  if(s.startsWith("textsize set ")){bool ok=setTextSize(s.substring(13).toInt());textSizeFocus=chatTextSize;Serial.printf("TEXTSIZE_SET ok=%d large=%d\n",ok,chatTextSize);render();return;}
@@ -1631,8 +1653,8 @@ void handle(const String &s) {
  if(s=="welcome start"){startWelcome();Serial.println("WELCOME_STARTED");return;}
  if(s=="welcome status"){Serial.printf("WELCOME_STATUS active=%d step=%d band=%d preset=%s name=%s bytes=%d done=%d archive=%s\n",screen==Screen::Welcome,welcomeStep,welcomeBand,welcomeFocus>=0&&welcomeFocus<int(welcomeList.size())?matter::RADIO_PRESETS[welcomeList[welcomeFocus]].name:"",welcomeName.c_str(),welcomeBytes,device::prefGetInt("mmsetup","done",0),welcomeArchive.c_str());return;}
  if(s=="unlock code"){Serial.printf("UNLOCK_CODE free=%d unlocked=%d code=%s\n",mm::FreeBuild,device::otaAppsUnlocked(),device::otaUnlockCode().c_str());return;}
- if(s=="ota status"){auto o=device::otaState();Serial.printf("OTA_STATUS board=%s code=%ld phase=%d message=\"%s\" version=%s offered=%ld done=%lu size=%lu servers=%d rolled_back=%d installed=%d\n",device::otaBoard(),long(MM_VERSION_CODE),int(o.phase),o.message.c_str(),o.version.c_str(),long(o.code),(unsigned long)o.done,(unsigned long)o.size,device::otaServerCount(),o.rolledBack,o.installed);return;}
- if(s=="ota check"){device::otaCheck();Serial.println("OTA_CHECK started");return;}
+ if(s=="ota status"){auto o=device::otaState();Serial.printf("OTA_STATUS board=%s code=%ld phase=%d message=\"%s\" version=%s offered=%ld done=%lu size=%lu servers=%d rolled_back=%d installed=%d refused=%ld\n",device::otaBoard(),long(MM_VERSION_CODE),int(o.phase),o.message.c_str(),o.version.c_str(),long(o.code),(unsigned long)o.done,(unsigned long)o.size,device::otaServerCount(),o.rolledBack,o.installed,long(o.refused));return;}
+ if(s=="ota check"){Serial.println(device::otaCheck()?"OTA_CHECK started":"OTA_CHECK not started (busy, no Wi-Fi, no server or no worker)");return;}
  if(s=="ota install"){Serial.printf("OTA_INSTALL started=%d\n",device::otaInstall());return;}
  if(s.startsWith("ota servers ")){device::otaSetServers(s.substring(12));Serial.printf("OTA_SERVERS count=%d\n",device::otaServerCount());return;}
  if(s=="map status"){auto t=device::mapTilesState();Serial.printf("MAP_STATUS zoom=%d lat=%.5f lon=%.5f follow=%d visible=%d missing=%d sd=%d online=%d queued=%d downloaded=%lu stored=%lu failed=%lu sd_png=%lu purged=%lu read_ms=%lu decode_ms=%lu bytes=%lu worker=%d decoder=%d heap_internal=%u\n",mapView.zoom,mapView.lat,mapView.lon,mapView.follow,mapVisibleCount,mapMissingCount,t.sd,t.online,t.queued,t.downloaded,t.stored,t.failed,t.sdLoaded,t.purged,t.lastReadMs,t.lastDecodeMs,t.lastBytes,t.worker,t.decoder,unsigned(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));return;}
@@ -1878,8 +1900,8 @@ void pollTrackball(){
   return;}
  pressesSeen=trackballPresses;firstPressAt=0;// presses made while unlocked never count towards an unlock
  if(down&&!clickDown){clickDown=true;clickAt=now;lockFired=false;device::activity();}
- else if(down&&clickDown&&!lockFired){uint32_t held=now-clickAt;int dots=int(held*7/TrackballLockMs);if(held>=TrackballLockMs){lockFired=true;lockKey.progress=0;enterLockMode();return;}
-  if(held>=200&&dots!=lockKey.progress){lockKey.progress=dots;lockKey.started=clickAt;render();}}
+ else if(down&&clickDown&&!lockFired){uint32_t held=now-clickAt;int dots=int(held*7/TrackballLockMs);if(held>=TrackballLockMs){lockFired=true;lockKey.progress=0;if(screen!=Screen::Welcome&&!welcomeWifi)enterLockMode();else render();return;}// no lock during the welcome
+  if(held>=200&&dots!=lockKey.progress&&screen!=Screen::Welcome&&!welcomeWifi){lockKey.progress=dots;lockKey.started=clickAt;render();}}
  else if(!down&&clickDown){clickDown=false;if(lockKey.progress){lockKey.progress=0;render();}if(!lockFired&&uint32_t(now-clickAt)<TrackballLockMs)key('\n');}
  // Rolling: the balls toggle a line per detent step; three steps make one move (it used to be one, too twitchy).
  static int accX=0,accY=0;static uint32_t rolledAt=0;if(dx||dy){if(uint32_t(now-rolledAt)>400)accX=accY=0;rolledAt=now;accX+=dx;accY+=dy;}
@@ -1917,7 +1939,7 @@ void loop(){
  matter::loop();device::audioLoop();
  if(!deviceLocked&&screen==Screen::Chat&&archivePager.poll(radioJournal)){chatRowsRevision++;repaintNow();}
  if(deviceLocked)incomingBanner.clear();else if(incomingBanner.expire(millis())){repaintNow();}
- static uint32_t audioRevision=0;auto nextAudioRevision=device::audioRevision();if(nextAudioRevision!=audioRevision){audioRevision=nextAudioRevision;auto audio=device::audioState();if(!deviceLocked){bool visibleAudio=screen==Screen::Section&&section==21;if(visibleAudio){notice=audio.message;if(screen==Screen::Chat&&!audio.busy){showChatError(audio.message,6000);}repaintSettled();}}}
+ static uint32_t audioRevision=0;auto nextAudioRevision=device::audioRevision();if(nextAudioRevision!=audioRevision){audioRevision=nextAudioRevision;auto audio=device::audioState();if(!deviceLocked){bool visibleAudio=screen==Screen::Section&&section==21;if(visibleAudio){notice=audio.message;repaintSettled();}}}
  // Recording counter 0..6 s: repaint the composer once per elapsed second.
  const bool audioBusy=device::audioBusy();
  device::powerHold(audioBusy);
@@ -1926,13 +1948,13 @@ void loop(){
  // LCD asleep while the backlight is off (it kept scanning and taking frames in the dark); on wake the whole frame is sent again.
  if(lcd.sleep(device::powerState().displayPWM==0)&&!lcd.asleep){lcd.invalidate();repaintNow();}
  // OTA: repaint Settings / OTA update on progress; a newly offered release shows a banner once per boot.
- {static uint32_t otaSeen=0;auto revision=device::otaRevision();if(revision!=otaSeen){otaSeen=revision;auto o=device::otaState();otaPhaseNow=o.phase;
+ {static uint32_t otaSeen=0;static bool lockedSeen=false;auto revision=device::otaRevision();if(revision!=otaSeen||deviceLocked!=lockedSeen){otaSeen=revision;lockedSeen=deviceLocked;auto o=device::otaState();otaPhaseNow=o.phase;
   if(!deviceLocked&&screen==Screen::Section&&(section==17||section==19))markRadioDirty();
-  if(o.phase==device::OtaPhase::Available&&o.code!=otaAnnounced){otaAnnounced=o.code;otaBannerText=std::string("MatterMesh ")+o.version.c_str()+" / Settings > OTA update";otaBannerUntil=millis()+6000;if(!deviceLocked&&!(screen==Screen::Section&&section==17))repaintNow();else otaBannerUntil=0;}}
+  if(o.phase==device::OtaPhase::Available&&o.code!=otaAnnounced&&!deviceLocked){otaAnnounced=o.code;otaBannerText=std::string("MatterMesh ")+o.version.c_str()+" / Settings > OTA update";otaBannerUntil=millis()+6000;if(!(screen==Screen::Section&&section==17))repaintNow();else otaBannerUntil=0;}/* found while locked: shown after the unlock */}
   if(otaBannerUntil&&int32_t(otaBannerUntil-millis())<=0){otaBannerUntil=0;if(!deviceLocked)repaintNow();}}
  static uint32_t serviceAt=0;if(millis()-serviceAt>=(deviceLocked?100u:20u)){serviceAt=millis();device::connectivityLoop();device::locationLoop();device::timeSyncLoop();device::weatherSetOpen(!deviceLocked&&((screen==Screen::Section&&section==10)||(screen==Screen::Home)));/* Plus: the Home header keeps the weather fresh (15 min) */device::weatherLoop();device::stormLoop();device::mapTilesLoop();if(deviceLocked)device::mapTilesCleanup();/* Plus: old OpenTopoMap caches */device::otaLoop(device::wifiConnected(),lastPaint!=0);appLinkLoop();welcomeWifiLoop();}
  static uint32_t timeRevision=0;auto clockRevision=device::timeSyncState().revision;if(clockRevision!=timeRevision){timeRevision=clockRevision;lockScreenDirty=true;if(!deviceLocked){markRadioDirty();}}
- appVisibilityLoop();toolsTick();weatherAppsTick();pollKeyboard();pollQuickReply();pollLockKey();pollBanners();if(deviceLocked){if(quickReply.active){pollTouch();static uint32_t keepAt=0;/* Plus: the screen stays on while the quick reply is open */if(millis()-keepAt>=1000){keepAt=millis();device::wakeDisplay(15000);}}
+ serviceReplay();appVisibilityLoop();toolsTick();weatherAppsTick();pollKeyboard();pollQuickReply();pollLockKey();pollBanners();if(deviceLocked){if(quickReply.active){pollTouch();static uint32_t keepAt=0;/* Plus: the screen stays on while the quick reply is open */if(millis()-keepAt>=1000){keepAt=millis();device::wakeDisplay(15000);}}
  pollTrackball();/* the click unlocks: read it before the locked loop returns */if(!deviceLocked)return;
  updateLockScreen();delay(quickReply.active?5:20);return;}
  // Connectivity / weather / GPS revisions repaint only the pages that draw them; elsewhere only a status-bar icon change counts.

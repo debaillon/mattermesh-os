@@ -15,7 +15,7 @@ class Journal {
  void ensureDir(){if(!dirReady)dirReady=fs->exists("/mattermesh")||fs->mkdir("/mattermesh");}
 public:
  struct Summary {Record last;uint32_t total=0,order=0,lastRX=0,lastOwn=0,revision=0;};
- Summary summaries[CHAT_SLOTS];MessageIndex index;bool healthy=true;
+ Summary summaries[CHAT_SLOTS];MessageIndex index;bool healthy=true,tailOpen=false;bool appendRow(const String &row,uint32_t *position);
  std::vector<Record> records;
  uint32_t clearedChats=0,localClearThrough[CHAT_SLOTS]={},readTrackedChats=0,readTokens[CHAT_SLOTS]={};
  void begin(fs::FS &storage,const char *path="/mattermesh/messages.tsv");

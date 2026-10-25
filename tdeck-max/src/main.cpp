@@ -28,7 +28,6 @@ SET_LOOP_TASK_STACK_SIZE(UI_TASK_STACK_BYTES);
 #include "services/prefs.h"
 #include "services/keyboard_layout.h"
 #include "services/tsv_field.h"
-#include "services/psram.h"
 #include "services/hex_util.h"
 #include "services/sd_replace.h"
 #include "services/wdt_trace.h"
@@ -65,7 +64,6 @@ SET_LOOP_TASK_STACK_SIZE(UI_TASK_STACK_BYTES);
 #include "services/lock_messages.h"
 #include "services/locked_cpu_policy.h"
 #include "services/scope_policy.h"
-#include "services/touch_hold.h"
 #include "services/touch_pipeline.h"
 #include "ui/panel_blit.h"
 #include "ui/typing_panel.h"
@@ -104,7 +102,8 @@ mm::RefreshTracker refreshTracker;int paintedScreen=-1;
 static_assert(mm::W==GxEPD2_310_GDEQ031T10::WIDTH&&mm::H==GxEPD2_310_GDEQ031T10::HEIGHT,"UI must match physical panel");
 Adafruit_TCA8418 keyboard;
 bool sdReady=false, keyboardReady=false;
-int accentTaps=0;bool accentTyped=false;// left Shift tapped (next vowel accented) / a vowel typed while it is held
+int accentTaps=0;bool accentTyped=false;// accent key taps before the next letter (1 = first variant ... 4) / a letter typed while it is held
+int accentMode=2,accentFocus=2;static bool accentContext();static bool accentHeld();static bool shiftHeld();bool setAccentMode(int mode);void loadAccentMode();// accent key (defined with the keyboard handling)
 String command, input;
 ExtensionIOXL9555 expander;
 int touchBackend=0;
@@ -128,6 +127,7 @@ device::SpaceTaps unlockTaps,lockTaps;device::LockMessages lockMessages;device::
 device::LockEnter lockEnter;device::QuickReply quickReply;bool quickTxReady=false,quickTxSuccess=false;uint32_t quickTxToken=0;
 device::ReplyOriginal pendingQuickOriginal;uint32_t lockMessageShownAt=0,paintedLockToken=0;
 std::string lockReadError;bool consumeLockMessage(uint32_t token);
+uint32_t quickReplyInputAt=0;// last key or touch in the quick reply (pollQuickReply closes it after a minute idle)
 void openQuickReply();void closeQuickReply();void sendQuickReply();void quickReplyKey(char c);void pollQuickReply();
 String lastReceivedChannel="Mesh messages";int lastReceivedChat=-1;bool lastReceivedRead=true;uint32_t lastReceivedToken=0;int paintedReadChat=-1;uint32_t paintedReadToken=0;uint16_t paintedUnread=0;
 String lastReceivedSender="No messages",lastReceivedBody="Waiting for mesh messages",lastReceivedTime="--:--";
@@ -415,7 +415,7 @@ bool commitChannelCatalog(const ChatEntry *next,const String *keys,const String 
   else {
    File in=SD.open(paths[i]);if(in){while(in.available()&&ok){String row=in.readStringUntil('\n');
     std::string mapped=row.c_str();auto result=device::remapChatRow(mapped,mapping,chatCount);
-    if(result==device::RemapRow::Invalid){ok=false;break;}if(result==device::RemapRow::Drop)continue;row=mapped.c_str();
+    if(result==device::RemapRow::Drop)continue;row=mapped.c_str();
     put(row+"\n");
    }in.close();}
   }
@@ -457,6 +457,7 @@ void channelOption(int index){
  if(index==0)notice=toggleChannelNotifications(channelOptionTarget)?"Notification setting saved":"Cannot save notifications";
  else if(index==1){if(chats[channelOptionTarget].direct)return;String key=channelKeys[channelOptionTarget];if(!key.length()&&!matter::channelSecret(channelOptionTarget,key)){notice="Key unavailable / radio not ready";render();return;}
   key.toLowerCase();channelKeyHex=key;channelQrSize=mm::encodeQr(mm::channelShareUrl(chats[channelOptionTarget].name.c_str(),key.c_str(),chats[channelOptionTarget].scope.c_str()),channelQr);channelKeyView=true;notice="";}
+ else if(!chats[channelOptionTarget].direct&&chats[channelOptionTarget].name=="Public")notice="Public cannot be deleted";
  else{deleteChannelConfirm=true;notice="";}render();
 }
 void deleteSelectedChannel(){
@@ -586,7 +587,7 @@ std::vector<mm::Conversation> conversationList(){std::vector<mm::Conversation> o
   mm::Conversation c;c.name=chats[i].name.c_str();c.scope=chats[i].scope.c_str();c.direct=chats[i].direct;c.id=i;c.unread=unreadMessages[i];c.preview="No messages";if(auto s=radioJournal.summary(i))if(s->total){auto &r=s->last;c.preview=r.body.c_str();c.sender=r.mine?"YOU":r.sender.c_str();c.time=messageTime(r.timestamp).c_str();c.activity=1+int(s->order);if(now>=MM_EPOCH_MIN&&r.timestamp>=MM_EPOCH_MIN&&r.timestamp<=uint32_t(now)){uint32_t minutes=(uint32_t(now)-r.timestamp)/60;c.age=minutes<60?std::to_string(minutes)+"m":minutes<1440?std::to_string(minutes/60)+"h":std::to_string(minutes/1440)+"d";}}out.push_back(c);}return out;}
 mm::State uiState(){
  auto audio=device::audioState();
- mm::State v;v.extraAppsUnlocked=device::otaAppsUnlocked();if(screen==Screen::Section&&section==mm::SupportSection){static String code=device::otaUnlockCode();v.unlockCode=code.c_str();v.supportTab=supportTab;}if(screen==Screen::Section&&section==17)fillOta(v);if(screen==Screen::Section&&section==14)appLinkFill(v);v.dateEditing=dateEditing;v.dateFocus=dateFocus;for(int i=0;i<mm::DateFieldCount;i++)v.dateFields[i]=dateFields[i];v.quickPending=quickReply.pending;v.quickSent=quickReply.sent;v.antennaConfirm=antennaConfirm;v.shutdownConfirm=shutdownConfirm;auto timeState=device::timeSyncState();v.timeSource=timeState.acquiring?timeState.message:timeState.source==device::TimeSource::WiFi?"Wi-Fi / NTP":timeState.source==device::TimeSource::GPS?"GPS":timeState.source==device::TimeSource::Manual?"Set manually":timeState.message;if(screen==Screen::Section&&section==mm::QuickSettingsSection){auto source=device::batteryPowerSource();v.usbPower=source==device::PowerSource::USB;v.powerSourceKnown=source!=device::PowerSource::Unknown;}if(screen==Screen::Section&&section==24&&sdReady){v.storageTotal=SD.totalBytes();v.storageUsed=SD.usedBytes();}v.emojiPicker=emojiPicker;v.emojiFocus=emojiFocus;v.emojiTab=emojiTab;if(emojiPicker){if(emojiRecent.empty())emojiItems();v.emojiRecent=emojiRecent;}v.receivedChannel=lastReceivedChannel.c_str();v.audioReady=audio.ready;v.audioNotifications=audio.notifications;v.audioVolume=audio.volume;v.messageTone=device::RINGTONES[device::ringtoneIndex(audio.messageTone)].name;v.mentionTone=device::RINGTONES[device::ringtoneIndex(audio.mentionTone)].name;v.audioRecording=audio.recording;v.audioWarming=audio.warming;v.audioSeconds=std::min<int>(device::DICTATION_MAX_SECONDS,audio.samples/device::DICTATION_RATE);v.audioBusy=audio.busy;v.audioTranscribing=audio.transcribing;v.dictationOffline=true;// the only engine (offline Italian)v.offlineEngineCompiled=device::OFFLINE_ITALIAN_COMPILED;v.audioMessage=audio.message.c_str();v.dictationConfigured=audio.dictationConfigured;v.unlockTapCount=unlockTaps.taps;v.scopePicker=scopePicker;v.scopeEditing=scopeEditing;v.clearChatConfirm=clearChatConfirm;v.chatMenuFocus=chatMenuFocus;v.scopeFocus=scopeFocus;v.scopeOffset=scopeFocus/mm::ScopeRows*mm::ScopeRows;v.scopeInput=scopeInput.c_str();if(scopePicker&&!deviceLocked)v.regionScopes=regionScopes;v.receivedName=lastReceivedSender.c_str();v.receivedPreview=lastReceivedBody.c_str();v.receivedTime=lastReceivedTime.c_str();v.lockHasMessage=lastReceivedToken!=0;v.lockHint=lockHintUntil&&int32_t(lockHintUntil-millis())>0;v.unlockCounting=unlockCountdownAt!=0;
+ mm::State v;v.extraAppsUnlocked=device::otaAppsUnlocked();if(screen==Screen::Section&&section==mm::SupportSection){static String code=device::otaUnlockCode();v.unlockCode=code.c_str();v.supportTab=supportTab;}if(screen==Screen::Section&&section==17)fillOta(v);if(screen==Screen::Section&&section==14)appLinkFill(v);v.dateEditing=dateEditing;v.dateFocus=dateFocus;for(int i=0;i<mm::DateFieldCount;i++)v.dateFields[i]=dateFields[i];v.quickPending=quickReply.pending;v.quickSent=quickReply.sent;v.antennaConfirm=antennaConfirm;v.shutdownConfirm=shutdownConfirm;auto timeState=device::timeSyncState();v.timeSource=timeState.acquiring?timeState.message:timeState.source==device::TimeSource::WiFi?"Wi-Fi / NTP":timeState.source==device::TimeSource::GPS?"GPS":timeState.source==device::TimeSource::Manual?"Set manually":timeState.message;if(screen==Screen::Section&&section==mm::QuickSettingsSection){auto source=device::batteryPowerSource();v.usbPower=source==device::PowerSource::USB;v.powerSourceKnown=source!=device::PowerSource::Unknown;}if(screen==Screen::Section&&section==24&&sdReady){v.storageTotal=SD.totalBytes();v.storageUsed=SD.usedBytes();}v.emojiPicker=emojiPicker;v.emojiFocus=emojiFocus;v.emojiTab=emojiTab;if(emojiPicker){if(emojiRecent.empty())emojiItems();v.emojiRecent=emojiRecent;}v.receivedChannel=lastReceivedChannel.c_str();v.audioReady=audio.ready;v.audioNotifications=audio.notifications;v.audioVolume=audio.volume;v.messageTone=device::RINGTONES[device::ringtoneIndex(audio.messageTone)].name;v.mentionTone=device::RINGTONES[device::ringtoneIndex(audio.mentionTone)].name;v.audioRecording=audio.recording;v.audioWarming=audio.warming;v.audioSeconds=std::min<int>(device::DICTATION_MAX_SECONDS,audio.samples/device::DICTATION_RATE);v.audioTranscribing=audio.transcribing;// the only engine (offline Italian)v.offlineEngineCompiled=device::OFFLINE_ITALIAN_COMPILED;v.audioMessage=audio.message.c_str();v.dictationConfigured=audio.dictationConfigured;v.unlockTapCount=unlockTaps.taps;v.scopePicker=scopePicker;v.scopeEditing=scopeEditing;v.clearChatConfirm=clearChatConfirm;v.chatMenuFocus=chatMenuFocus;v.scopeFocus=scopeFocus;v.scopeOffset=scopeFocus/mm::ScopeRows*mm::ScopeRows;v.scopeInput=scopeInput.c_str();if(scopePicker&&!deviceLocked)v.regionScopes=regionScopes;v.receivedName=lastReceivedSender.c_str();v.receivedPreview=lastReceivedBody.c_str();v.receivedTime=lastReceivedTime.c_str();v.lockHasMessage=lastReceivedToken!=0;v.lockHint=lockHintUntil&&int32_t(lockHintUntil-millis())>0;v.unlockCounting=unlockCountdownAt!=0;
  std::string lockRxHash;if(deviceLocked){v.lockHasMessage=false;matter::Record r;if(loadedRecord(lockMessages.current,r)&&!r.mine){v.lockHasMessage=true;v.receivedHops=r.hops;v.receivedName=r.sender.c_str();v.receivedPreview=r.body.c_str();v.receivedTime=messageTime(r.timestamp).c_str();v.receivedChannel=r.chat>=0&&r.chat<chatCount?chats[r.chat].name.c_str():"Mesh messages";lockRxHash=device::incomingRepeater(r.path.c_str());}}
  auto repeaterLabel=[&](const std::string &hash){int matches=0;String name=matter::nodeNameForPrefix(hash.c_str(),matches,2);return matches==1&&!name.isEmpty()?mm::senderDisplayName(name.c_str()):"["+hash+"]";};auto incomingLabel=[&](){return repeaterLabel(receivedRepeater.hash);};
  if(deviceLocked&&!lockRxHash.empty()&&uint32_t(millis()-lockMessageShownAt)<device::LOCK_RX_REPEATER_MS)v.lockRepeater="Received via: "+repeaterLabel(lockRxHash);for(auto n:unreadMessages)v.unread+=n;v.status.unread=v.unread;v.cpuMHz=getCpuFrequencyMhz();{static uint32_t diagAt=0;static UBaseType_t stack=0;static uint32_t heapKB=0,flashMB=0;if(!diagAt||millis()-diagAt>=1000){diagAt=millis()|1;stack=uxTaskGetStackHighWaterMark(nullptr);heapKB=ESP.getFreeHeap()/1024;flashMB=ESP.getFlashChipSize()/1048576;}/* stack scan and heap walk once a second, not per frame */v.stackFree=stack;v.heapKB=heapKB;v.flashMB=flashMB;}v.rasterMs=lastRasterMs;v.paintMs=lastPaintMs;v.sd=sdReady;v.touch=touchBackend;v.keyboard=keyboardReady;v.haptic=hapticEnabled;v.vibrationPercent=vibrationPercent;v.messageVibration=device::VIBRATIONS[messageVibration].name;v.mentionVibration=device::VIBRATIONS[mentionVibration].name;v.hapticReady=hapticReady;
@@ -597,7 +598,8 @@ mm::State uiState(){
 v.radioRX=radio.rx;v.radioTX=radio.tx;v.radioError=radio.error;v.radioFrequency=radio.config.frequency;v.radioBW=radio.config.bandwidth;v.radioSF=radio.config.sf;v.radioCR=radio.config.cr;v.radioPower=radio.config.power;v.radioPowerEditing=radioPowerEditing;v.radioPowerInput=radioPowerInput.c_str();v.radioName=radio.config.name.c_str();v.radioPathBytes=radio.config.pathBytes;v.radioDevicePage=radioDevicePage;v.radioDeviceFocus=radioDeviceFocus;v.radioPacketsRX=radio.received;v.radioPacketsTX=radio.sent;v.radioQueued=radio.queued;v.nodeCount=radio.nodes;v.radioRSSI=radio.received?radio.rssi:-999;v.radioSNR=radio.received?radio.snr:-999;v.radioFocus=radioFocus;v.nodeScroll=nodeScroll;
  if(section==2&&radioDraftLoaded){v.radioName=radioDraft.name.c_str();v.radioPathBytes=radioDraft.pathBytes;v.radioFrequency=radioDraft.frequency;v.radioBW=radioDraft.bandwidth;v.radioSF=radioDraft.sf;v.radioCR=radioDraft.cr;v.radioPower=radioDraft.power;v.radioEditField=radioEditField;v.radioPreset=radioPresetSelection;v.radioBand=radioBandSelection;v.radioDraftChanged=radioDraft.name!=radio.config.name||radioDraft.pathBytes!=radio.config.pathBytes||radioDraft.frequency!=radio.config.frequency||radioDraft.bandwidth!=radio.config.bandwidth||radioDraft.sf!=radio.config.sf||radioDraft.cr!=radio.config.cr||radioDraft.power!=radio.config.power;}
  if(!deviceLocked&&screen==Screen::Section&&section==1){auto page=matter::contacts(discoverFilter,contactQuery.c_str(),nodeScroll,mm::ContactRows);v.filteredNodeCount=page.total;v.contactLive=page.live;v.contactQuery=contactQuery.c_str();v.contactSearching=contactSearching;v.contactFocus=contactFocus;auto gps=device::locationState();bool here=gps.fix&&(gps.latitude!=0||gps.longitude!=0);for(auto &n:page.rows){mm::Node node;node.name=n.name.c_str();node.key=n.key.c_str();node.type=n.type;node.live=n.live;node.age=n.live?(millis()-n.seen)/1000:0;node.rssi=n.rssi;node.snr=n.snr;node.hops=n.hops;if(here&&(n.lat||n.lon)){double lat=n.lat/1e6,lon=n.lon/1e6;node.distance=mm::formatDistance(mm::geoDistanceMeters(gps.latitude,gps.longitude,lat,lon),mm::geoHeading(gps.latitude,gps.longitude,lat,lon));}v.nodes.push_back(node);}}
- v.caps=keyboardModifiers.shift();v.accent=accentTaps>0||keyboardModifiers.leftShift;v.symbols=keyboardModifiers.symbols();
+ if(!accentContext())accentTaps=0;// a tap armed in a chat ends when the chat or quick reply does
+ v.caps=shiftHeld();v.accent=accentContext()&&(accentTaps>0||accentHeld());v.accentTaps=accentTaps;v.accentMode=accentMode;v.accentFocus=accentFocus;v.symbols=keyboardModifiers.symbols();
  v.field=formField;v.newName=newName.c_str();v.newScope=newScope.c_str();v.newKey=newKey.c_str();v.newForm=newForm;v.messageMenuFocus=messageMenuFocus;
  if(screen==Screen::Welcome)welcomeState(v);
  if(screen==Screen::PickContact){v.pickerSearching=pickerSearching;v.pickerQuery=pickerQuery.c_str();v.pickerFocus=pickerFocus;v.pickerTotal=pickerContacts.size();v.pickerStart=pickerFocus/mm::PickerRows*mm::PickerRows;
@@ -620,9 +622,10 @@ v.radioRX=radio.rx;v.radioTX=radio.tx;v.radioError=radio.error;v.radioFrequency=
    if(chatOffset<int(cached.size()))rows=&cached;// newest suffix while the page (re)loads
    else{v.historyError=archivePager.error;v.historyLoading=v.historyError.empty();}}
   if(summary&&summary->lastOwn)v.latestOwnMessage=-1;
+  if(rows)v.messages.reserve(rows->size());
   if(rows)for(auto &r:*rows){
    String meta=r.mine?r.status:(r.hops<0?String("? hop"):String(r.hops)+" hop");if(!r.mine)meta+=" | "+r.scope;
-   mm::Message message{r.mine?"YOU":r.sender.c_str(),messageTime(r.timestamp).c_str(),r.body.c_str(),meta.c_str(),r.mine};message.path=r.path.c_str();message.scope=r.scope.c_str();message.hops=r.hops;message.repeaters=r.repeaters;message.token=r.token;message.heard=r.heard.c_str();if(r.mine&&summary&&r.token==summary->lastOwn)v.latestOwnMessage=v.messages.size();v.messages.push_back(message);
+   mm::Message message{r.mine?"YOU":r.sender.c_str(),messageTime(r.timestamp).c_str(),r.body.c_str(),meta.c_str(),r.mine};message.path=r.path.c_str();message.scope=r.scope.c_str();message.hops=r.hops;message.repeaters=r.repeaters;message.token=r.token;message.heard=r.heard.c_str();if(r.mine&&summary&&r.token==summary->lastOwn)v.latestOwnMessage=v.messages.size();v.messages.push_back(std::move(message));
   }
   v.chatOffset=rows?chatOffset-rowsOffset:0;
   v.chatTotal=radioTotal;v.chatPosition=chatOffset;
@@ -631,8 +634,8 @@ v.radioRX=radio.rx;v.radioTX=radio.tx;v.radioError=radio.error;v.radioFrequency=
  auto connection=device::connectivityStatus();v.status.wifi=connection.wifi;v.status.bt=connection.ble&&connection.bleReady;v.wifiEnabled=connection.wifi;v.wifiConnected=connection.connected;v.wifiConnecting=connection.connecting;v.wifiScanning=connection.scanning;v.wifiMessage=connection.message.c_str();v.wifiSSID=wifiEditing?wifiTarget.c_str():connection.ssid.c_str();v.wifiIP=connection.address.c_str();v.wifiEditing=wifiEditing;v.wifiPasswordMask=device::wifiInputDisplay(wifiPassword.c_str(),wifiShowPassword);v.wifiHidden=wifiHidden;v.wifiShowPassword=wifiShowPassword;v.wifiEditField=wifiEditField;v.wifiOffset=wifiOffset;v.wifiFocus=wifiFocus;v.bleEnabled=connection.ble;v.bleReady=connection.bleReady;v.bleClient=connection.bleClient;
  if(!deviceLocked&&screen==Screen::Section&&section==4)for(auto &network:device::connectivityState().networks){mm::State::Network n;n.ssid=network.ssid.c_str();n.rssi=network.rssi;n.secured=network.protectedNetwork;n.saved=network.saved;v.networks.push_back(n);}
  if(!deviceLocked&&screen==Screen::Section&&section==10){// only the Weather page draws these
- auto weather=device::weatherState();v.weatherValid=weather.data.valid;v.weatherBusy=weather.busy;v.weatherCached=weather.cached;v.temperature=weather.data.temperature;v.humidity=weather.data.humidity;v.pressure=weather.data.pressure;v.wind=weather.data.wind;v.high=weather.data.high;v.low=weather.data.low;v.weatherCode=weather.data.code;v.weatherText=weather.data.valid?device::weatherDescription(weather.data.code):"No weather data";v.weatherUpdated=weather.data.stamp;v.weatherPlace=weather.place.c_str();v.weatherMessage=weather.message.c_str();v.weatherPhase=mm::WeatherPhaseView(int(weather.phase));v.weatherSource=device::weatherSourceLabel(weather.data.source);v.weatherNext=weather.nextRefresh;v.apparent=weather.data.apparent;v.precipitation=weather.data.precipitation;v.weatherHours=weather.data.hours;for(int i=0;i<device::WeatherHours&&i<4;i++){v.weatherHourCode[i]=weather.data.hourCode[i];v.weatherHourTemp[i]=weather.data.hourTemp[i];v.weatherHourTime[i]=weather.data.hourTime[i];}}
- auto location=device::locationState();v.locationValid=location.configured;v.latitude=location.latitude;v.longitude=location.longitude;v.gpsData=location.data;v.gpsNmeaFresh=location.nmeaFresh;v.gpsTimeValid=location.timeValid;v.gpsTemporary=location.timeLease&&!location.userEnabled;v.gpsUsed=location.satellitesUsed;v.gpsVisible=location.satellitesVisible;v.gpsBaud=location.baud;v.gpsNmea=location.nmeaValid;v.gpsFix=location.fix;v.gpsEnabled=location.enabled;v.gpsAvailable=location.available;v.status.gps=location.enabled&&location.available;v.status.acquiringTime=timeState.acquiring&&(location.enabled||connection.connected);if(timeState.acquiring&&!v.status.acquiringTime)v.timeSource="Time not synchronized";v.altitude=location.altitude;v.satellites=location.satellites;
+ auto weather=device::weatherState();v.weatherValid=weather.data.valid;v.weatherBusy=weather.busy;v.temperature=weather.data.temperature;v.humidity=weather.data.humidity;v.pressure=weather.data.pressure;v.wind=weather.data.wind;v.high=weather.data.high;v.low=weather.data.low;v.weatherCode=weather.data.code;v.weatherText=weather.data.valid?device::weatherDescription(weather.data.code):"No weather data";v.weatherUpdated=weather.data.stamp;v.weatherPlace=weather.place.c_str();v.weatherMessage=weather.message.c_str();v.weatherPhase=mm::WeatherPhaseView(int(weather.phase));v.weatherSource=device::weatherSourceLabel(weather.data.source);v.weatherNext=weather.nextRefresh;v.apparent=weather.data.apparent;v.precipitation=weather.data.precipitation;v.weatherHours=weather.data.hours;for(int i=0;i<device::WeatherHours&&i<4;i++){v.weatherHourCode[i]=weather.data.hourCode[i];v.weatherHourTemp[i]=weather.data.hourTemp[i];v.weatherHourTime[i]=weather.data.hourTime[i];}}
+ auto location=device::locationState();v.locationValid=location.configured;v.latitude=location.latitude;v.longitude=location.longitude;v.gpsData=location.data;v.gpsNmeaFresh=location.nmeaFresh;v.gpsTimeValid=location.timeValid;v.gpsTemporary=location.timeLease&&!location.userEnabled;v.gpsUsed=location.satellitesUsed;v.gpsVisible=location.satellitesVisible;v.gpsBaud=location.baud;v.gpsFix=location.fix;v.gpsEnabled=location.enabled;v.gpsAvailable=location.available;v.status.gps=location.enabled&&location.available;v.status.acquiringTime=timeState.acquiring&&(location.enabled||connection.connected);if(timeState.acquiring&&!v.status.acquiringTime)v.timeSource="Time not synchronized";v.altitude=location.altitude;v.satellites=location.satellites;
  v.wallpaper=lockWallpaper;v.wallpaperFocus=wallpaperFocus;v.kbdQuery=kbdQuery.c_str();v.kbdSearching=kbdSearching;v.kbdFocus=kbdFocus;v.kbdLang=int(kbdLang);v.kbdMask=kbdMask;if(mm_kbd::enabledCount(kbdMask)>1)v.status.keyboard=mm_kbd::info(kbdLang).code;auto power=device::powerState();v.displayLightEnabled=power.displayEnabled;v.keyboardLightEnabled=power.keyboardEnabled;v.displayTimeout=power.displaySeconds;v.keyboardTimeout=power.keyboardSeconds;v.powerField=powerField;
  time_t now=time(nullptr);if(now>=MM_EPOCH_MIN){/* localtime + 3 strftime only when the minute changes (~150 us each frame otherwise) */static time_t shownMinute=-1;static std::string clockText,dateText,menuDateText;if(now/60!=shownMinute){shownMinute=now/60;struct tm tm;localtime_r(&now,&tm);char clock[6],date[30],menuDate[20];strftime(clock,sizeof(clock),"%H:%M",&tm);strftime(date,sizeof(date),"%a, %b %d, %Y",&tm);strftime(menuDate,sizeof(menuDate),"%a, %b %d",&tm);clockText=clock;dateText=date;menuDateText=menuDate;}v.menuDate=menuDateText;v.status.clock=clockText;v.date=dateText;}
  if(!deviceLocked&&(screen==Screen::Home||screen==Screen::Chats))v.conversations=conversationList();
@@ -664,7 +667,7 @@ void loadLights(){
  f.close();
 }
 mm::Page sectionPage(int id){
- switch(id){case 1:return mm::Page::Mesh;case 2:return mm::Page::Radio;case 3:return mm::Page::GPS;case 4:return mm::Page::Wifi;case 5:return mm::Page::Battery;case 6:return mm::Page::Controls;case 7:return mm::Page::Files;case 8:return mm::Page::Info;case 9:return mm::Page::Maps;case 10:return mm::Page::Weather;case 11:return mm::Page::Terminal;case 14:return mm::Page::Bluetooth;case 16:return mm::Page::DateTime;case 17:return mm::Page::Updates;case mm::QuickSettingsSection:return mm::Page::QuickSettings;case 19:return mm::Page::Settings;case 20:return mm::Page::Power;case 21:return mm::Page::Audio;case 22:return mm::Page::Wallpaper;case mm::KeyboardSection:return mm::Page::Keyboard;case 23:return mm::Page::Antenna;case 24:return mm::Page::Storage;case mm::CliSection:return mm::Page::Cli;case mm::SupportSection:return mm::Page::Support;default:return mm::Page::Info;}
+ switch(id){case 1:return mm::Page::Mesh;case 2:return mm::Page::Radio;case 3:return mm::Page::GPS;case 4:return mm::Page::Wifi;case 5:return mm::Page::Battery;case 6:return mm::Page::Controls;case 7:return mm::Page::Files;case 8:return mm::Page::Info;case 9:return mm::Page::Maps;case 10:return mm::Page::Weather;case 11:return mm::Page::Terminal;case 14:return mm::Page::Bluetooth;case 16:return mm::Page::DateTime;case 17:return mm::Page::Updates;case mm::QuickSettingsSection:return mm::Page::QuickSettings;case 19:return mm::Page::Settings;case 20:return mm::Page::Power;case 21:return mm::Page::Audio;case 22:return mm::Page::Wallpaper;case mm::KeyboardSection:return mm::Page::Keyboard;case 23:return mm::Page::Antenna;case mm::AccentKeySection:return mm::Page::AccentKey;case 24:return mm::Page::Storage;case mm::CliSection:return mm::Page::Cli;case mm::SupportSection:return mm::Page::Support;default:return mm::Page::Info;}
 }
 void renderSection(){
  auto v=uiState();v.page=sectionPage(section);v.filter=discoverFilter;v.settingsFocus=settingsFocus;v.settingsOffset=settingsScroll;
@@ -689,7 +692,7 @@ void openSection(int id,bool paint){
  if(id==mm::SupportSection)supportTab=0;// Settings > Donate / Unlock opens on Donate
  antennaConfirm=shutdownConfirm=otaConfirm=dateEditing=false;emojiPicker=false;scopePicker=scopeEditing=clearChatConfirm=channelOptions=deleteChannelConfirm=positionShare=false;
  if(navigation.size()<16)navigation.push_back({screen,section});
- section=constrain(id,0,mm::MaxSection);notice="";if(section==1){contactSearching=false;contactQuery="";contactFocus=nodeScroll=0;}if(section==22)wallpaperFocus=lockWallpaper;if(section==mm::KeyboardSection){kbdQuery="";kbdSearching=false;kbdFocus=0;}if(section==9)mapOpen();if(mm::toolsSection(section))toolsOpen(section);
+ section=constrain(id,0,mm::MaxSection);notice="";if(section==1){contactSearching=false;contactQuery="";contactFocus=nodeScroll=0;}if(section==22)wallpaperFocus=lockWallpaper;if(section==mm::KeyboardSection){kbdQuery="";kbdSearching=false;kbdFocus=0;}if(section==mm::AccentKeySection)accentFocus=accentMode;if(section==9)mapOpen();if(mm::toolsSection(section))toolsOpen(section);
  radioPowerEditing=false;radioDevicePage=false;radioDeviceFocus=0;if(section==2)loadRadioDraft(false);
  if(section==0){searching=false;searchQuery="";messagesMenu=false;chatsParent=screen==Screen::Launcher?Screen::Launcher:Screen::Home;screen=Screen::Chats;}
  else {sectionParent=screen==Screen::Launcher?Screen::Launcher:Screen::Home;screen=Screen::Section;}
@@ -1040,6 +1043,8 @@ void key(char c) {
   if(section==21){if(c=='h'){openSection(6);return;}else if(c=='n')device::audioNotifications(!device::audioState().notifications);else if(c=='t'||c=='\n')device::audioNotify(true);else if(c=='m'||c=='r')cycleRingtone(c=='r',1);else if(c=='j'||c=='k')device::audioVolume(device::audioState().volume+(c=='j'?5:-5));render();return;}
   if(section==4&&wifiEditing){if(c=='\n'){if(wifiEditField==0)wifiEditField=1;else{connectWifi();return;}}else if(c=='\t')wifiEditField=1-wifiEditField;else if(c>=32&&c<=126){String &field=wifiEditField==0?wifiTarget:wifiPassword;if(field.length()<(wifiEditField==0?32:63))field+=c;}repaintSettled();return;}
   if(section==mm::SupportSection){if(!device::otaAppsUnlocked()&&(c=='j'||c=='k'||c=='h'||c=='l'||c=='d'||c=='\n'||c==' ')){supportTab=1-supportTab;render();}return;}// unlocked Full: Donate only, no tabs
+  if(section==mm::AccentKeySection){if(c=='k'&&accentFocus>0){accentFocus--;notice="";render();return;}if(c=='j'&&accentFocus<2){accentFocus++;notice="";render();return;}
+   if(c=='\n'||c==' '){bool ok=setAccentMode(accentFocus);if(!ok)accentFocus=accentMode;notice=ok?"Saved":"Save failed";render();}return;}
   if(section==mm::KeyboardSection){auto rows=keyboardLanguageRows();
    if(kbdSearching){if(c=='\n'){kbdSearching=false;render();return;}if(c>=32&&c<=126&&kbdQuery.length()<15){kbdQuery+=c;kbdFocus=0;notice="";}repaintSettled();return;}
    if(c=='/'){kbdSearching=true;render();return;}
@@ -1100,8 +1105,9 @@ void key(char c) {
  } else {
   if(emojiPicker){int count=emojiItems().size();if(c=='a'||c=='k')emojiFocus=(emojiFocus+count-1)%max(1,count);else if(c=='d'||c=='j')emojiFocus=(emojiFocus+1)%max(1,count);else if(c=='w')emojiFocus=max(0,emojiFocus-mm::EmojiCols);else if(c=='s')emojiFocus=min(count-1,emojiFocus+mm::EmojiCols);else if(c=='m'||c=='\t')emojiSwitchTab(1);else if(c=='n')emojiSwitchTab(-1);else if(c=='\n'){insertEmoji(emojiFocus);return;}else if(c==3){emojiPicker=false;}render();return;}
   if(c=='\n'){submitRadio();return;}
-  else if(c>=32&&c<=126&&input.length()<messageByteLimit())inputInsert(String(c));
-  notice="";repaintSettled();
+  else if(c>=32&&c<=126){if(input.length()<messageByteLimit()){inputInsert(String(c));notice="";}else notice=matter::messageLimitError(messageByteLimit()).c_str();}
+  else notice="";
+  repaintSettled();
  }
 }
 // After a typing pause the area painted with the short waveform gets an ordinary OTP partial (same pixels), which
@@ -1154,7 +1160,7 @@ void quickSettingsTap(int x,int y){
 }
 void tap(int x,int y) {
  if(x<0||x>=mm::W||y<0||y>=mm::H)return;
- if(deviceLocked){if(quickReply.active){if(mm::QuickReplySend.contains(x,y))sendQuickReply();else if(mm::QuickReplyCancel.contains(x,y)||mm::BackButton.contains(x,y))closeQuickReply();}return;}device::activity();
+ if(deviceLocked){if(quickReply.active){quickReplyInputAt=millis();if(mm::QuickReplySend.contains(x,y))sendQuickReply();else if(mm::QuickReplyCancel.contains(x,y)||mm::BackButton.contains(x,y))closeQuickReply();}return;}device::activity();
  if(channelOptions){if(mm::BackButton.contains(x,y)){back();return;}if(deleteChannelConfirm){if(mm::ChatClearYes.contains(x,y))deleteSelectedChannel();else if(mm::ChatClearNo.contains(x,y))back();}else if(channelKeyView)back();else{const bool direct=chats[channelOptionTarget].direct;for(int slot=0;slot<(direct?2:3);slot++)if(mm::channelOptionRect(slot).contains(x,y)){channelOption(direct&&slot==1?2:slot);break;}}return;}
  Serial.printf("TOUCH_TAP x=%d y=%d screen=%d\n",x,y,int(screen));
  if(screen==Screen::Welcome){welcomeTap(x,y);return;}
@@ -1184,6 +1190,7 @@ void tap(int x,int y) {
   if(section==21){if(mm::AudioNotify.contains(x,y))device::audioNotifications(!device::audioState().notifications);else if(mm::AudioToneMessage.contains(x,y)||mm::AudioToneMention.contains(x,y)){bool mention=mm::AudioToneMention.contains(x,y);cycleRingtone(mention,mm::stepRowTap(mm::AudioToneMessage,x));}else if(mm::AudioMinus.contains(x,y))device::audioVolume(device::audioState().volume-5);else if(mm::AudioPlus.contains(x,y))device::audioVolume(device::audioState().volume+5);else if(mm::AudioSlider.contains(x,y)){int track=mm::AudioSlider.w-16;device::audioVolume((constrain(x-mm::AudioSlider.x-8,0,track)*20+track/2)/track*5);}render();return;}
   if(section==23){if(antennaConfirm){if(mm::ConfirmYes.contains(x,y))confirmAntenna();else if(mm::ConfirmNo.contains(x,y)){antennaConfirm=false;render();}}else if(mm::AntennaInternal.contains(x,y))requestAntenna(true);else if(mm::AntennaExternal.contains(x,y))requestAntenna(false);return;}
   if(section==mm::SupportSection){if(!device::otaAppsUnlocked())for(int i=0;i<2;i++)if(mm::supportTabRect(i).contains(x,y)&&supportTab!=i){supportTab=i;render();}return;}
+  if(section==mm::AccentKeySection){for(int i=0;i<3;i++)if(mm::accentRowRect(i).contains(x,y)){bool ok=setAccentMode(i);accentFocus=ok?i:accentMode;notice=ok?"Saved":"Save failed";render();return;}return;}
   if(section==mm::KeyboardSection){if(mm::KeyboardSearch.contains(x,y)){kbdSearching=true;render();return;}
    auto rows=keyboardLanguageRows();int first=std::max(0,std::min(kbdFocus,int(rows.size())-1)-mm::KeyboardRows+1);
    for(int i=0;i<mm::KeyboardRows&&first+i<int(rows.size());i++)if(mm::keyboardRowRect(i).contains(x,y)){kbdSearching=false;kbdFocus=first+i;toggleKeyboardLanguage(rows[first+i]);return;}
@@ -1308,16 +1315,21 @@ void initKeyboard() {
 }
 bool typeLayoutLetter(char ch);static bool typingMessage();static void typeText(const std::string &text);
 void flushPendingKeys(){pendingKeys.flush([](const char *text){if(text[1]){if(typingMessage())typeText(text);}else if(!typeLayoutLetter(text[0]))key(text[0]);});}
-// Accent key (left Shift, TCA8418 code 35). Held: every letter typed meanwhile takes its first accented variant.
-// Tapped before a letter: one tap gives the first variant, two taps the second (Russian З→Х / Ъ), five taps disarm.
-// Only the message composer and Quick Reply accept them; elsewhere the letter is typed as it is.
-constexpr int ACCENT_KEYCODE=35;
-void accentKey(bool pressed){if(pressed){accentTaps=accentTaps>=4?0:accentTaps+1;accentTyped=false;}else if(accentTyped){accentTaps=0;accentTyped=false;}if(deviceLocked)lockScreenDirty=true;else repaintSettled();}
+// Accent key (Settings > Accent key, NVS "mmui"/"accent": 0 off, 1 right Shift, 2 left Shift, the Max default). Only
+// in chats (the message composer and Quick Reply): tapped before a letter it picks the variant, held it accents every
+// letter typed meanwhile. Elsewhere, or when off, both Shift keys type capitals.
+static int accentCode(){return accentMode==1?31:accentMode==2?35:-1;}// TCA8418 codes: right Shift 31, left Shift 35
+static bool accentContext(){return typingMessage();}
+static bool accentHeld(){return keyboardModifiers.accentHeld(accentCode(),accentContext());}
+static bool shiftHeld(){return keyboardModifiers.capitals(accentCode(),accentContext());}
+void loadAccentMode(){accentMode=constrain(device::prefGetInt("mmui","accent",2),0,2);accentFocus=accentMode;}
+bool setAccentMode(int mode){if(mode<0||mode>2)return false;if(!device::prefPutInt("mmui","accent",mode))return false;accentMode=mode;accentTaps=0;accentTyped=false;return true;}
+void accentKey(bool pressed){if(pressed){if(deviceLocked)quickReplyInputAt=millis();accentTaps=accentTaps>=4?0:accentTaps+1;accentTyped=false;}else if(accentTyped){accentTaps=0;accentTyped=false;}if(deviceLocked)lockScreenDirty=true;else repaintSettled();}
 // Language letters go to the message composer and the lock-screen quick reply; menus keep the plain keys.
 static bool typingMessage(){return deviceLocked?quickReply.active:!deviceLocked&&screen==Screen::Chat&&!emojiPicker&&editableField()==&input;}
 static void typeText(const std::string &text){
  device::activity();
- if(deviceLocked){quickReply.appendText(text);lockScreenDirty=true;return;}
+ if(deviceLocked){quickReply.appendText(text);quickReplyInputAt=millis();lockScreenDirty=true;return;}
  if(input.length()+text.size()<=messageByteLimit()){inputInsert(String(text.c_str()));notice="";}else notice=matter::messageLimitError(messageByteLimit()).c_str();
  repaintSettled();
 }
@@ -1328,6 +1340,12 @@ std::string accentedText(char ch,int taps){
   std::string before=deviceLocked?quickReply.text:std::string(input.substring(0,cursorAt()).c_str());
   return device::accented(ch,before,upper);
  }
+ // Two taps on an Italian e: the other e than the word rules give (è <-> é).
+ if(kbdLang==mm_kbd::Lang::Italian&&index==1&&(ch=='e'||ch=='E')){std::string before=deviceLocked?quickReply.text:std::string(input.substring(0,cursorAt()).c_str());
+  auto first=device::accented(ch,before,upper);// keeps the case the word rules chose (È at a sentence start)
+  if(first=="\xc3\xa8")return "\xc3\xa9";if(first=="\xc3\xa9")return "\xc3\xa8";if(first=="\xc3\x88")return "\xc3\x89";if(first=="\xc3\x89")return "\xc3\x88";return first;}
+ // A key without a variant at this tap count types its plain letter (as the accent bar shows), no wrap-around.
+ if(index>=mm_kbd::variants(kbdLang,ch).count)return std::string();
  return mm_kbd::variant(kbdLang,ch,index,upper);
 }
 bool typeAccented(char ch,int taps){
@@ -1378,13 +1396,13 @@ void keyboardEvent(int event,uint32_t capturedAt=0,bool hardwareDebounced=false)
    if(pressed){if(lockEnter.press(now,hardwareDebounced)&&!quickReply.active){pendingQuickOriginal=device::ReplyOriginal{};{matter::Record r;if(loadedRecord(paintedLockToken,r)&&!r.mine&&r.chat>=0&&r.chat<chatCount){pendingQuickOriginal=replyOriginalFrom(r);}}}}
    else{auto action=lockEnter.release(now,hardwareDebounced);if(quickReply.active){if(action==device::EnterAction::Short)sendQuickReply();}else if(action==device::EnterAction::Hold)openQuickReply();else if(action==device::EnterAction::Short){lockHintUntil=0;if(consumeLockMessage(pendingQuickOriginal.token)){if(lockMessages.current==pendingQuickOriginal.token||!lockMessages.current)lockMessages.next(lockMessageTokens());else lockMessages.receive(lockMessageTokens(),lockMessages.current);}lockMessageShownAt=millis();lockScreenDirty=true;}}
   }else if(quickReply.active){
-   if(code==ACCENT_KEYCODE)accentKey(pressed);
+   if(code==accentCode()&&(!pressed||accentContext()))accentKey(pressed);
    if(keyboardModifiers.update(code,pressed))return;
    if(code==device::SPACE_KEYCODE){if(pressed&&keyboardModifiers.alt&&mm_kbd::enabledCount(kbdMask)>=2){switchKeyboardLanguage();return;}if(pressed){accentTaps=0;quickReplyKey(' ');}return;}
    int k=code-1;if(k<0||k>=40)return;if(code==device::MICROPHONE_KEYCODE){if(pressed&&keyboardModifiers.symbols())quickReplyKey('0');return;}
    char ch=keys[k/10][9-k%10];
    if(ch=='\b'){deleteHeld=pressed;if(pressed){deleteAt=repeatAt=millis();quickReplyKey('\b');}return;}
-   if(pressed){int taps=accentTaps;bool accent=(taps>0||keyboardModifiers.leftShift)&&!keyboardModifiers.symbols();accentTaps=0;if(accent&&keyboardModifiers.leftShift)accentTyped=true;if(keyboardModifiers.symbols())ch=symbols[k/10][9-k%10];else if(keyboardModifiers.shift()&&ch>='a'&&ch<='z')ch=ch-'a'+'A';if(accent&&typeAccented(ch,taps))return;if(!keyboardModifiers.symbols()&&typeLayoutLetter(ch))return;if(ch)quickReplyKey(ch);}
+   if(pressed){int taps=accentTaps;bool held=accentHeld(),accent=(taps>0||held)&&!keyboardModifiers.symbols();accentTaps=0;if(accent&&held)accentTyped=true;if(keyboardModifiers.symbols())ch=symbols[k/10][9-k%10];else if(shiftHeld()&&ch>='a'&&ch<='z')ch=ch-'a'+'A';if(accent&&typeAccented(ch,taps))return;if(!keyboardModifiers.symbols()&&typeLayoutLetter(ch))return;if(ch)quickReplyKey(ch);}
   }else if(code==device::SPACE_KEYCODE){handleLockKey(pressed,capturedAt,hardwareDebounced);
   }else if(pressed)showLockHint();
   return;
@@ -1398,8 +1416,8 @@ void keyboardEvent(int event,uint32_t capturedAt=0,bool hardwareDebounced=false)
  // MIC key: hold-to-dictate; with SYM/ALT held its second function is the digit 0. A release always reaches a
  // dictation started by this key, even if SYM was pressed meanwhile.
  if(code==device::MICROPHONE_KEYCODE){if(pressed){if(keyboardModifiers.symbols()){emitKeyboardChar('0');return;}micInput(device::MicSource::Keyboard,true);}else if(dictationHold.source==device::MicSource::Keyboard)micInput(device::MicSource::Keyboard,false);return;}
- keyboardEvents++;if(code==ACCENT_KEYCODE)accentKey(pressed);if(keyboardModifiers.update(code,pressed)){repaintSettled();return;}int r=k/10,c=9-k%10;char ch=keys[r][c];
- if(screen==Screen::Chat&&pressed&&keyboardModifiers.alt&&keyboardModifiers.shift()&&editableField()==&input&&(ch=='w'||ch=='s')){scrollChat(ch=='w'?1:-1);return;}
+ keyboardEvents++;if(code==accentCode()&&(!pressed||accentContext()))accentKey(pressed);if(keyboardModifiers.update(code,pressed)){repaintSettled();return;}int r=k/10,c=9-k%10;char ch=keys[r][c];
+ if(screen==Screen::Chat&&pressed&&keyboardModifiers.alt&&(keyboardModifiers.leftShift||keyboardModifiers.rightShift)&&editableField()==&input&&(ch=='w'||ch=='s')){accentTaps=0;if(accentHeld())accentTyped=true;/* the accent Shift used for scrolling arms nothing */scrollChat(ch=='w'?1:-1);return;}
  if(screen==Screen::Section&&section==4&&wifiEditing&&pressed&&keyboardModifiers.alt&&ch=='v'){wifiShowPassword=!wifiShowPassword;render();return;}
  if(screen==Screen::Section&&section==mm::CliSection&&pressed&&keyboardModifiers.alt&&cliAltKey(ch))return;
  if(ch=='\b'){
@@ -1408,9 +1426,9 @@ void keyboardEvent(int event,uint32_t capturedAt=0,bool hardwareDebounced=false)
  }
  if(!pressed)return;
  if(keyboardModifiers.symbols())ch=symbols[r][c];
- else if(keyboardModifiers.shift()&&ch>='a'&&ch<='z')ch=ch-'a'+'A';
+ else if(shiftHeld()&&ch>='a'&&ch<='z')ch=ch-'a'+'A';
  // Menu shortcuts remain case-insensitive when caps mode is enabled.
- if(accentTaps>0||keyboardModifiers.leftShift){int taps=accentTaps;bool accent=!keyboardModifiers.symbols();accentTaps=0;if(keyboardModifiers.leftShift)accentTyped=true;if(accent&&typeAccented(ch,taps))return;}
+ if(accentTaps>0||accentHeld()){int taps=accentTaps;bool held=accentHeld(),accent=!keyboardModifiers.symbols();accentTaps=0;if(held)accentTyped=true;if(accent&&typeAccented(ch,taps))return;}
  ch=device::keyboardCase(ch,(screen==Screen::Chats&&!searching)||(screen==Screen::PickContact&&!pickerSearching)||screen==Screen::Home||screen==Screen::Launcher||screen==Screen::Section,editableField()!=nullptr);
  if(event&128)device::activity();
  if(ch)emitKeyboardChar(ch);
@@ -1486,7 +1504,7 @@ bool consumeLockMessage(uint32_t token){
 void openQuickReply(){
  if(!deviceLocked||quickReply.active||!quickReply.open(pendingQuickOriginal,messageByteLimit(pendingQuickOriginal.chat)))return;
  unlockTaps.reset();unlockCountdownAt=lockHintUntil=0;keyboardModifiers.reset();deleteHeld=false;
- setCpuFrequencyMhz(device::NORMAL_CPU_FREQUENCY);device::unlockLightPreview(true);setTouchEnabled(true);lockScreenDirty=true;render();
+ quickReplyInputAt=millis();setCpuFrequencyMhz(device::NORMAL_CPU_FREQUENCY);device::unlockLightPreview(true);setTouchEnabled(true);lockScreenDirty=true;render();
 }
 void closeQuickReply(){
  quickReply.close();keyboardModifiers.reset();deleteHeld=false;if(lockEnter.down)lockEnter.consumed=true;
@@ -1494,13 +1512,14 @@ void closeQuickReply(){
 }
 void sendQuickReply(){
  if(!quickReply.editable())return;
+ quickReplyInputAt=millis();
  uint32_t token=0;
  bool accepted=quickReply.send([&](int chat,const std::string &scope,const std::string &body,std::string &error){String region=scope.c_str();bool ok=queueRadioMessage(body.c_str(),region.isEmpty()?nullptr:&region,chat,&token);error=notice.c_str();return ok;});
  if(accepted)quickReply.txToken=token;
  lockScreenDirty=true;render();
 }
 void quickReplyKey(char c){
- if(!quickReply.active)return;
+ if(!quickReply.active)return;quickReplyInputAt=millis();
  if(c==3){closeQuickReply();return;}if(c=='\n'){sendQuickReply();return;}
  if(c=='\b'){if(quickReply.text.empty()||!quickReply.editable()){closeQuickReply();return;}quickReply.erase();}
  else if(c>=32&&c<=126)quickReply.append(c);
@@ -1508,12 +1527,13 @@ void quickReplyKey(char c){
 }
 void pollQuickReply(){
  if(quickTxReady){quickTxReady=false;uint32_t original=quickReply.original.token;
-  if(quickReply.complete(quickTxToken,quickTxSuccess)){
+  if(quickReply.complete(quickTxToken,quickTxSuccess)){quickReplyInputAt=millis();// a failed send stays editable with its error for another minute
    if(quickTxSuccess){consumeLockMessage(original);lockMessages.reset(lockMessageTokens());lockMessageShownAt=millis();lockScreenDirty=true;}
    else lockScreenDirty=true;
   }
  }
  if(quickReply.confirmationExpired(millis()))closeQuickReply();
+ if(quickReply.active&&quickReply.editable()&&uint32_t(millis()-quickReplyInputAt)>=60000UL)closeQuickReply();// left alone for a minute; a send waiting for the radio, or its result, stays
 
  if(deviceLocked&&lockEnter.tick(millis())==device::EnterAction::Hold&&!quickReply.active)openQuickReply();
  lockEnter.recover(millis());static bool wasBoot=false;bool boot=digitalRead(BOARD_BOOT_PIN)==LOW;if(quickReply.active&&boot&&!wasBoot)closeQuickReply();wasBoot=boot;
@@ -1654,7 +1674,8 @@ void handle(const String &s) {
  auto list=json.to<JsonArray>();for(int i=0;i<chatCount;i++){auto entry=list.createNestedObject();entry["id"]=i;entry["name"]=chats[i].name;entry["direct"]=chats[i].direct;entry["muted"]=bool(mutedChannels&(uint32_t(1)<<i));entry["ready"]=channelReady[i];entry["peer_bound"]=!peerKeys[i].isEmpty();}Serial.print("CHANNEL_LIST ");serializeJson(json,Serial);Serial.println();return;}
  if(s=="scope status"){Serial.printf("SCOPE_STATUS active=%d count=%u scope=%s picker=%d editing=%d focus=%d\n",activeChat,unsigned(regionScopes.size()),chats[activeChat].scope.c_str(),scopePicker,scopeEditing,scopeFocus);return;}
  if(s=="lora status"){auto cfg=matter::snapshot().config;Serial.printf("LORA_STATUS frequency=%.3f bandwidth=%.2f sf=%u cr=%u power=%d draft_frequency=%.3f draft_bandwidth=%.2f draft_sf=%u draft_cr=%u draft_power=%d preset=%d band=%d field=%d editing=%d focus=%d path_bytes=%u draft_path_bytes=%u device_page=%d device_focus=%d name_bytes=%u draft_name_bytes=%u\n",cfg.frequency,cfg.bandwidth,cfg.sf,cfg.cr,cfg.power,radioDraft.frequency,radioDraft.bandwidth,radioDraft.sf,radioDraft.cr,radioDraft.power,radioPresetSelection,radioBandSelection,radioEditField,radioPowerEditing,radioFocus,cfg.pathBytes,radioDraft.pathBytes,radioDevicePage,radioDeviceFocus,cfg.name.length(),radioDraft.name.length());return;}
- if(s=="keyboard status"){Serial.printf("KEYBOARD_STATUS sym=%d shift=%d symbols=%d caps=%d bytes=%u alt=%d\n",keyboardModifiers.sym,keyboardModifiers.shift(),keyboardModifiers.symbols(),keyboardModifiers.shift(),input.length(),keyboardModifiers.alt);return;}
+ if(s=="keyboard status"){Serial.printf("KEYBOARD_STATUS sym=%d shift=%d symbols=%d caps=%d bytes=%u alt=%d\n",keyboardModifiers.sym,shiftHeld(),keyboardModifiers.symbols(),shiftHeld(),input.length(),keyboardModifiers.alt);return;}
+ if(s=="accent status"){Serial.printf("ACCENT_STATUS mode=%d focus=%d taps=%d context=%d\n",accentMode,accentFocus,accentTaps,accentContext());return;}
  // Bounded keyboard FIFO regressions: no RF sends, no settings writes.
  if(s=="ui replay lock-burst"){if(!deviceLocked){uint32_t now=millis();for(int edge:{161,33,161,33})captureKeyEvent(edge,now);}Serial.println("LOCK_REPLAY_DONE");return;}
  if(s=="ui replay unlock-burst"){if(deviceLocked&&!unlockTaps.active()){uint32_t now=millis();for(int edge:{161,33,161,33,33})captureKeyEvent(edge,now);}Serial.println("UNLOCK_REPLAY_DONE");return;}
@@ -1690,7 +1711,7 @@ void handle(const String &s) {
  if(s=="lock status"){auto p=device::powerState();Serial.printf("LOCK_STATUS locked=%d previous=%d cpu=%u touch_disabled=%d display=%u keyboard=%u unread=%u rx=%lu target=%d taps=%d boost=%d requested=%lu last_read=%d down=%d complete=%d recoveries=%lu hw_overflow=%lu irq=%d uptime=%lu\n",deviceLocked,int(previousScreen),getCpuFrequencyMhz(),deviceLocked&&expanderReady&&expander.digitalRead(BOARD_XL9555_07_TOUCH_RST)==LOW,p.displayPWM,p.keyboardPWM,uiState().unread,matter::snapshot().received,lastReceivedChat,unlockTaps.taps,unlockTaps.active(),requestedLockedCpu(),lastReceivedRead,unlockTaps.down,unlockTaps.completed,lockRecoveries,keyboardHardwareOverflows,digitalRead(BOARD_KEYBOARD_INT),millis());return;}
  if(s=="lock test-rx"){matter::Received m;for(int i=0;i<chatCount;i++)if(channelReady[i]){m.channelId=i;break;}m.sender="LOCK TEST (synthetic)";m.body="MATTERMESH LOCK callback test";m.timestamp=time(nullptr);m.hops=2;m.scope="*";m.path="flood:ab,cd";incomingRadio(m);render();return;}
  if(deviceLocked&&!(quickReply.active&&(s.startsWith("tap ")||s.startsWith("type ")||s.startsWith("key ")))&&s!="status"&&s!="shot"&&s!="render"&&s!="notify incoming"&&s!="radio status"&&s!="device status"&&!s.startsWith("event ")){Serial.println("UI_READY locked=1 ignored=1");return;}
- if(s=="status")Serial.printf("STATUS reset=%d radio=meshcore sd=%d keyboard=%d screen=%d chats=%d selected=%d active=%d field=%d touch=%d touch_events=%lu key_events=%lu caps=%d symbols=%d kbd_light=%u input_len=%u section=%d filter=%d screen_light=%u haptic_ready=%d haptic_enabled=%d haptic_pulses=%lu haptic_effect=%u haptic_go=%u searching=%d query_len=%u chat_offset=%d file_count=%d message_actions=%d message_path=%d channel_muted=%d stack_free=%u radio_power_edit=%d node_scroll=%d\n",(int)esp_reset_reason(),sdReady,keyboardReady,int(screen),chatCount,selected,activeChat,formField,touchBackend,touchEvents,keyboardEvents,keyboardModifiers.shift(),keyboardModifiers.symbols(),keyboardBrightness,input.length(),section,discoverFilter,displayBrightness,hapticReady,hapticEnabled,hapticPulses,hapticReady?haptic.readRegister8(DRV2605_REG_WAVESEQ1):0,hapticReady?haptic.readRegister8(DRV2605_REG_GO):0,searching,unsigned(searchQuery.length()),chatOffset,filesCount,messageActions,messagePath,bool(mutedChannels&(uint32_t(1)<<activeChat)),unsigned(uxTaskGetStackHighWaterMark(nullptr)),radioPowerEditing,nodeScroll);
+ if(s=="status")Serial.printf("STATUS reset=%d radio=meshcore sd=%d keyboard=%d screen=%d chats=%d selected=%d active=%d field=%d touch=%d touch_events=%lu key_events=%lu caps=%d symbols=%d kbd_light=%u input_len=%u section=%d filter=%d screen_light=%u haptic_ready=%d haptic_enabled=%d haptic_pulses=%lu haptic_effect=%u haptic_go=%u searching=%d query_len=%u chat_offset=%d file_count=%d message_actions=%d message_path=%d channel_muted=%d stack_free=%u radio_power_edit=%d node_scroll=%d\n",(int)esp_reset_reason(),sdReady,keyboardReady,int(screen),chatCount,selected,activeChat,formField,touchBackend,touchEvents,keyboardEvents,shiftHeld(),keyboardModifiers.symbols(),keyboardBrightness,input.length(),section,discoverFilter,displayBrightness,hapticReady,hapticEnabled,hapticPulses,hapticReady?haptic.readRegister8(DRV2605_REG_WAVESEQ1):0,hapticReady?haptic.readRegister8(DRV2605_REG_GO):0,searching,unsigned(searchQuery.length()),chatOffset,filesCount,messageActions,messagePath,bool(mutedChannels&(uint32_t(1)<<activeChat)),unsigned(uxTaskGetStackHighWaterMark(nullptr)),radioPowerEditing,nodeScroll);
  else if(s=="chat bubbles"){for(auto &hit:paintedChatMessages)Serial.printf("CHAT_BUBBLE index=%d x=%d y=%d w=%d h=%d mine=%d token=%08lx\n",hit.index,hit.area.x,hit.area.y,hit.area.w,hit.area.h,hit.message.mine,hit.message.token);Serial.println("CHAT_BUBBLES_DONE");}
 
  else if(s=="shot") {Serial.printf("PBM_BEGIN %u\n",unsigned(((mm::W+7)/8)*mm::H));Serial.printf("P4\n%d %d\n",mm::W,mm::H);Serial.write(frame.getBuffer(),((mm::W+7)/8)*mm::H);Serial.println("\nPBM_END");}
@@ -1702,9 +1723,9 @@ void handle(const String &s) {
  else if(s=="wifi scan"){device::scan();render();}
  else if(s=="wifi on"||s=="wifi off"){device::wifiEnabled(s=="wifi on");render();}
  else if(s=="unlock code"){Serial.printf("UNLOCK_CODE free=%d unlocked=%d code=%s\n",mm::FreeBuild,device::otaAppsUnlocked(),device::otaUnlockCode().c_str());}
- else if(s=="ota status"){auto o=device::otaState();Serial.printf("OTA_STATUS board=%s code=%ld phase=%d message=\"%s\" version=%s offered=%ld done=%lu size=%lu servers=%d rolled_back=%d installed=%d\n",device::otaBoard(),long(MM_VERSION_CODE),int(o.phase),o.message.c_str(),o.version.c_str(),long(o.code),(unsigned long)o.done,(unsigned long)o.size,device::otaServerCount(),o.rolledBack,o.installed);}
+ else if(s=="ota status"){auto o=device::otaState();Serial.printf("OTA_STATUS board=%s code=%ld phase=%d message=\"%s\" version=%s offered=%ld done=%lu size=%lu servers=%d rolled_back=%d installed=%d refused=%ld\n",device::otaBoard(),long(MM_VERSION_CODE),int(o.phase),o.message.c_str(),o.version.c_str(),long(o.code),(unsigned long)o.done,(unsigned long)o.size,device::otaServerCount(),o.rolledBack,o.installed,long(o.refused));}
  else if(s.startsWith("time set ")){int y,mo,d,h,mi;bool ok=sscanf(s.c_str()+9,"%d-%d-%d %d:%d",&y,&mo,&d,&h,&mi)==5;if(ok){dateFields[0]=d;dateFields[1]=mo;dateFields[2]=y;dateFields[3]=h;dateFields[4]=mi;dateEditing=true;dateSave();ok=!dateEditing;dateEditing=false;}Serial.printf("TIME_SET ok=%d epoch=%lu\n",ok,(unsigned long)time(nullptr));}
- else if(s=="ota check"){device::otaCheck();Serial.println("OTA_CHECK started");}
+ else if(s=="ota check"){Serial.println(device::otaCheck()?"OTA_CHECK started":"OTA_CHECK not started");}
  else if(s=="ota install")Serial.printf("OTA_INSTALL started=%d\n",device::otaInstall());
  else if(s.startsWith("ota servers ")){device::otaSetServers(s.substring(12));Serial.printf("OTA_SERVERS count=%d\n",device::otaServerCount());}
  else if(s.startsWith("wifi join ")){StaticJsonDocument<256> json;if(!deserializeJson(json,s.substring(10))&&json["ssid"].is<const char*>()&&json["password"].is<const char*>())notice=device::connect(json["ssid"].as<String>(),json["password"].as<String>())?"Connecting...":"Connection settings rejected";else notice="Invalid connection settings";render();}
@@ -1808,7 +1829,7 @@ void setup(){
  if(welcomePending&&sdReady&&!device::prefGetInt("mmsetup","archived",0)){welcomeArchive=archiveSdData();device::prefPutInt("mmsetup","archived",1);}
  else if(!setupMark){markSetupDone();}
  device::mapTilesBegin(SD,sdReady);
- loadLights();device::powerBegin(displayBrightness,keyboardBrightness);loadChats();loadRegionScopes();loadChannelNotifications();loadVibrations();loadKeyboardLanguages();loadWallpaper();
+ loadLights();device::powerBegin(displayBrightness,keyboardBrightness);loadChats();loadRegionScopes();loadChannelNotifications();loadVibrations();loadKeyboardLanguages();loadAccentMode();loadWallpaper();
  device::audioBegin(expander,expanderReady);
  if(sdReady){loadBindings();radioJournal.begin(SD);
   uint32_t latest[MAX_CHATS]={};for(auto &record:radioJournal.index)if(!record.mine&&record.chat>=0&&record.chat<chatCount)latest[record.chat]=record.token;
@@ -1835,9 +1856,9 @@ void loop(){
  if(!deviceLocked&&screen==Screen::Chat&&archivePager.poll(radioJournal)){chatRowsRevision++;repaintNow();}
  if(deviceLocked)incomingBanner.clear();else if(incomingBanner.expire(millis())){repaintNow();}
  // OTA: repaint Settings / Updates on progress; a newly offered release shows a banner once per boot.
- {static uint32_t otaSeen=0;auto revision=device::otaRevision();if(revision!=otaSeen){otaSeen=revision;auto o=device::otaState();
+ {static uint32_t otaSeen=0;static bool lockedSeen=false;auto revision=device::otaRevision();if(revision!=otaSeen||deviceLocked!=lockedSeen){otaSeen=revision;lockedSeen=deviceLocked;auto o=device::otaState();
   if(!deviceLocked&&screen==Screen::Section&&(section==17||section==19)){markRadioDirty();}
-  if(o.phase==device::OtaPhase::Available&&o.code!=otaAnnounced){otaAnnounced=o.code;otaBannerText=std::string("MatterMesh ")+o.version.c_str()+" / Settings > OTA update";otaBannerUntil=millis()+6000;if(!deviceLocked&&!(screen==Screen::Section&&section==17)){repaintNow();}else otaBannerUntil=0;}}
+  if(o.phase==device::OtaPhase::Available&&o.code!=otaAnnounced&&!deviceLocked){otaAnnounced=o.code;otaBannerText=std::string("MatterMesh ")+o.version.c_str()+" / Settings > OTA update";otaBannerUntil=millis()+6000;if(!(screen==Screen::Section&&section==17)){repaintNow();}else otaBannerUntil=0;}/* found while locked: shown after the unlock */}
   if(otaBannerUntil&&int32_t(otaBannerUntil-millis())<=0){otaBannerUntil=0;if(!deviceLocked){repaintNow();}}}
  static uint32_t audioRevision=0;auto nextAudioRevision=device::audioRevision();if(nextAudioRevision!=audioRevision){audioRevision=nextAudioRevision;auto audio=device::audioState();if(!deviceLocked){bool visibleAudio=(screen==Screen::Section&&section==21)||dictationChat>=0;if(visibleAudio){notice=audio.message;if(screen==Screen::Chat&&!audio.busy){chatToast(audio.message,6000);}repaintSettled();}String dictated;if(device::takeTranscript(dictated)&&screen==Screen::Chat&&activeChat==dictationChat){bool trimmed=false;input=device::appendDictation(input.c_str(),dictated.c_str(),messageByteLimit(),trimmed).c_str();composerExpanded=true;if(trimmed)notice=(String("Dictation trimmed / ")+String(messageByteLimit())+"-byte limit");}if(!audio.busy){if(dictationChat>=0)device::activity();dictationChat=-1;dictationDraft="";}}}
  // Recording counter 0..6 s: repaint the composer once per elapsed second.

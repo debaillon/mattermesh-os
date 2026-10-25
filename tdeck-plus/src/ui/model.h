@@ -82,7 +82,7 @@ std::string lockRepeater;
  uint32_t radioPacketsRX=0,radioPacketsTX=0;
  float radioFrequency=869.618f,radioBW=62.5f;
  std::string radioName="MatterMesh";std::vector<Node> nodes;
- bool sd=false,touch=false,keyboard=false,caps=false,symbols=false,accent=false;
+ bool sd=false,touch=false,keyboard=false,caps=false,symbols=false,accent=false;int accentTaps=0;// accent armed (taps 1..4) or held (0)
  int cpuMHz=240;uint32_t stackFree=0,rasterMs=0,paintMs=0;
  int heapKB=0,flashMB=16;
  int keyboardLight=180,displayLight=100,voltage=-1;

@@ -18,11 +18,11 @@ static bool carriesHeard(const String &row){return field(row,3).length()||field(
 static void echo(Record &r,const String &row){r.repeaters=field(row,2).toInt();if(carriesHeard(row))r.heard=field(row,3);}
 static void cache(std::vector<Record> &records,const Record &r){if(records.size()>=JOURNAL_CACHE_RECORDS)records.erase(records.begin());records.push_back(r);}
 void Journal::begin(fs::FS &storage,const char *path){dirReady=false;
- fs=&storage;journalPath=path;records.clear();index.clear();healthy=true;clearedChats=readTrackedChats=0;
+ fs=&storage;journalPath=path;records.clear();index.clear();healthy=true;tailOpen=false;clearedChats=readTrackedChats=0;
  for(int c=0;c<CHAT_SLOTS;c++){auto revision=summaries[c].revision+1;summaries[c]=Summary{};summaries[c].revision=revision;readTokens[c]=localClearThrough[c]=0;}
  File f=fs->open(journalPath.c_str());if(!f)return;
  while(f.available()){
-  uint32_t position=f.position();String row=f.readStringUntil('\n');Record r;
+  uint32_t position=f.position();String row=f.readStringUntil('\n');Record r;tailOpen=f.position()==position+row.length();// last row without its new line
   if(decode(row,r)){
    if(index.find(r.token))continue;MessageIndexEntry e;e.token=r.token;e.chat=r.chat;e.mine=r.mine;e.position=position;e.restored=true;
    if(!index.push(e)){healthy=false;break;}
@@ -60,36 +60,45 @@ bool Journal::readRecordFrom(File &f,uint32_t token,Record &r){
  if(ok&&e->echoPosition){String row;ok=echoRow(e->echoPosition,row);if(ok)echo(r,row);}
  if(ok){r.readLocally=e->readLocally;if(e->restored)rebootStatus(r);}return ok;
 }
+// Every row is appended here. A short write (full card, bus error) leaves a row without its new line: the next row
+// starts with one, so it is not glued to the broken one (begin() sees the same at the end of the file).
+bool Journal::appendRow(const String &row,uint32_t *position){
+ File f=fs->open(journalPath.c_str(),FILE_APPEND);if(!f)return false;String out=row;if(tailOpen)out=String("\n")+row;
+ size_t before=f.size();if(position)*position=uint32_t(before)+(tailOpen?1:0);size_t written=f.print(out);f.flush();
+ // print() can report the whole row while the buffered write fails at flush(): the size says what reached the card.
+ if(f.size()>=before&&f.size()-before<written)written=f.size()-before;f.close();
+ bool ok=written==out.length();if(written)tailOpen=out[written-1]!='\n';return ok;
+}
 bool Journal::append(const Record &r){
  if(!healthy||!fs||!r.token||index.find(r.token)||r.chat<0||r.chat>=CHAT_SLOTS||r.body.length()>160||!r.body.length()||!index.prepare())return false;
  if(!(readTrackedChats&(uint32_t(1)<<r.chat))&&!markRead(r.chat,0))return false;
- ensureDir();File f=fs->open(journalPath.c_str(),FILE_APPEND);uint32_t position=f?f.size():0;
+ ensureDir();uint32_t position=0;
  String row="R2\t"+String(r.token,HEX)+"\t"+String(r.chat)+"\t"+String(r.mine)+"\t"+String(r.timestamp)+"\t"+String(r.hops)+"\t"+safe(r.sender)+"\t"+safe(r.scope)+"\t"+safe(r.status)+"\t"+safe(r.body)+"\t"+safe(r.path)+"\t"+String(r.repeaters)+"\t"+safe(r.heard)+"\n";
- bool ok=f&&f.print(row)==row.length();if(f){f.flush();f.close();}
+ bool ok=appendRow(row,&position);
  if(ok){MessageIndexEntry e;e.token=r.token;e.chat=r.chat;e.mine=r.mine;e.position=position;if(!index.push(e)){healthy=false;return false;}cache(records,r);auto &s=summaries[r.chat];s.last=r;s.total++;s.order=index.size();s.revision++;if(r.mine)s.lastOwn=r.token;else s.lastRX=r.token;}return ok;
 }
 bool Journal::update(uint32_t token,const String &status){
  auto e=index.find(token);if(!healthy||!fs||!e)return false;
- File f=fs->open(journalPath.c_str(),FILE_APPEND);uint32_t position=f?f.size():0;String row="S1\t"+String(token,HEX)+"\t"+safe(status)+"\n";bool ok=f&&f.print(row)==row.length();if(f){f.flush();f.close();}
+ uint32_t position=0;String row="S1\t"+String(token,HEX)+"\t"+safe(status)+"\n";bool ok=appendRow(row,&position);
  if(ok){e->statusPosition=position;for(auto &r:records)if(r.token==token)r.status=status;auto &s=summaries[e->chat];if(s.last.token==token)s.last.status=status;s.revision++;}return ok;
 }
 bool Journal::repeats(uint32_t token,int count,const String &heard){
  auto e=index.find(token);if(!healthy||!fs||!e||count<0)return false;
- File f=fs->open(journalPath.c_str(),FILE_APPEND);uint32_t position=f?f.size():0;String row="C1\t"+String(token,HEX)+"\t"+String(count)+"\t"+safe(heard)+"\n";bool ok=f&&f.print(row)==row.length();if(f){f.flush();f.close();}
+ uint32_t position=0;String row="C1\t"+String(token,HEX)+"\t"+String(count)+"\t"+safe(heard)+"\n";bool ok=appendRow(row,&position);
  if(ok){e->echoPosition=position;if(heard.length()||count==0)e->heardPosition=position;auto apply=[&](Record &r){r.repeaters=count;r.heard=heard;};for(auto &r:records)if(r.token==token)apply(r);auto &s=summaries[e->chat];if(s.last.token==token)apply(s.last);s.revision++;}return ok;
 }
 bool Journal::clearChat(int chat,uint32_t boundary){
- if(!healthy||!fs||chat<0||chat>=CHAT_SLOTS)return false;ensureDir();File f=fs->open(journalPath.c_str(),FILE_APPEND);String row="D1\t"+String(chat)+"\t"+String(boundary)+"\tCLEAR\n";bool ok=f&&f.print(row)==row.length();if(f){f.flush();f.close();}if(!ok)return false;
+ if(!healthy||!fs||chat<0||chat>=CHAT_SLOTS)return false;ensureDir();String row="D1\t"+String(chat)+"\t"+String(boundary)+"\tCLEAR\n";bool ok=appendRow(row,nullptr);if(!ok)return false;
  clearedChats|=uint32_t(1)<<chat;readTrackedChats|=uint32_t(1)<<chat;readTokens[chat]=0;localClearThrough[chat]=boundary;
  for(auto &e:index)if(e.chat==chat)e.chat=-1;auto revision=summaries[chat].revision+1;summaries[chat]=Summary{};summaries[chat].revision=revision;
  records.erase(std::remove_if(records.begin(),records.end(),[&](const Record &r){return r.chat==chat;}),records.end());return true;
 }
 bool Journal::markRead(int chat,uint32_t token){
  if(!healthy||!fs||chat<0||chat>=CHAT_SLOTS)return false;if((readTrackedChats&(uint32_t(1)<<chat))&&readTokens[chat]==token)return true;
- ensureDir();File f=fs->open(journalPath.c_str(),FILE_APPEND);String row="V1\t"+String(chat)+"\t"+String(token,HEX)+"\tREAD\n";bool ok=f&&f.print(row)==row.length();if(f){f.flush();f.close();}if(ok){readTrackedChats|=uint32_t(1)<<chat;readTokens[chat]=token;}return ok;
+ ensureDir();String row="V1\t"+String(chat)+"\t"+String(token,HEX)+"\tREAD\n";bool ok=appendRow(row,nullptr);if(ok){readTrackedChats|=uint32_t(1)<<chat;readTokens[chat]=token;}return ok;
 }
 bool Journal::markOneRead(int chat,uint32_t token){
  auto e=index.find(token);if(!healthy||!fs||!e||e->chat!=chat||e->mine)return false;if(e->readLocally)return true;
- File f=fs->open(journalPath.c_str(),FILE_APPEND);String row="I1\t"+String(chat)+"\t"+String(token,HEX)+"\tREAD_ONE\n";bool ok=f&&f.print(row)==row.length();if(f){f.flush();f.close();}if(ok){e->readLocally=true;for(auto &r:records)if(r.token==token)r.readLocally=true;}return ok;
+ String row="I1\t"+String(chat)+"\t"+String(token,HEX)+"\tREAD_ONE\n";bool ok=appendRow(row,nullptr);if(ok){e->readLocally=true;for(auto &r:records)if(r.token==token)r.readLocally=true;}return ok;
 }
 }

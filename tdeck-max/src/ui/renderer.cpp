@@ -1,7 +1,6 @@
 #include "renderer.h"
 #include "composer_caret.h"
 #include "utf8.h"
-#include "mesh/antenna_policy.h"
 #include "mesh/radio_parameters.h"
 #include "mesh/radio_presets.h"
 #include "emoji_choices.h"
@@ -84,7 +83,7 @@ void Renderer::lock(const State &s){
 }
 void Renderer::quickReply(const State &s){
  auto panel=QuickReplyPanel;g.fillRect(0,panel.y,W,H-panel.y,BG);c.card(panel); // full width: also hides the hero card edges
- c.text(panel.x+8,panel.y+8,"Quick Reply",Font::ChatTitle,FG,panel.w-16);if(s.accent&&!s.quickSent)c.text(panel.x+8+c.width("Quick Reply  ",Font::ChatTitle),panel.y+8,"\xc3\xa0 \xc3\xa8 \xc3\xa9 \xc3\xac \xc3\xb2 \xc3\xb9",Font::ChatTitle,FG);
+ c.text(panel.x+8,panel.y+8,"Quick Reply",Font::ChatTitle,FG,panel.w-16);if(s.accent&&!s.quickSent){int x=panel.x+8+c.width("Quick Reply  ",Font::ChatTitle);c.text(x,panel.y+8,mm_kbd::accentBar(mm_kbd::Lang(s.kbdLang),s.accentTaps," "),Font::ChatTitle,FG,panel.x+panel.w-8-x);}
  if(!s.quickSent&&s.quickInput.size()>MessageCounterThreshold){auto count=std::to_string(s.quickInput.size())+"/"+std::to_string(s.quickMessageLimit);int width=c.width(count,Font::ChatMeta);c.text(panel.x+panel.w-8-width,panel.y+11,count,Font::ChatMeta);}
  c.text(panel.x+8,panel.y+31,s.quickChannel,Font::ChatMeta,FG,panel.w-16);
  c.text(panel.x+8,panel.y+49,senderDisplayName(s.quickSender),Font::ChatBody,FG,panel.w-16);
@@ -222,7 +221,9 @@ void Renderer::chat(const State &s){
   if(caretByte<s.input.size()&&caretX+4<inputX+inputWidth)c.text(caretX+3,composer.y+9,s.input.substr(caretByte),Font::ChatBody,FG,inputX+inputWidth-caretX-3);g.drawFastVLine(caretX,composer.y+8,15,FG);}
  g.drawFastVLine(ComposerEmoji.x-2,composer.y+5,composer.h-10,FG);{constexpr int B=mm_emoji_picker::ButtonSize;if(s.emojiPicker)g.fillRoundRect(ComposerEmoji.x+2,ComposerEmoji.y+2,ComposerEmoji.w-4,ComposerEmoji.h-5,5,FG);g.drawBitmap(ComposerEmoji.x+(ComposerEmoji.w-B)/2,ComposerEmoji.y+(ComposerEmoji.h-B)/2-1,mm_emoji_picker::button,B,B,s.emojiPicker?BG:FG);}
  // Accent key held or armed (left Shift): the accented letters show above the composer, the emoji button shows "\xc3\xa0".
- if(s.accent){Rect bar={composer.x,composer.y-32,composer.w,28};g.fillRoundRect(bar.x,bar.y,bar.w,bar.h,8,FG);c.centered(bar.x,bar.y+(bar.h-c.lineHeight(Font::ChatTitle))/2,bar.w,"\xc3\xa0  \xc3\xa8  \xc3\xa9  \xc3\xac  \xc3\xb2  \xc3\xb9",Font::ChatTitle,BG);
+ // Accent armed or held: the letters the next key gives in the active keyboard language (none: no bar).
+ auto accentLetters=s.accent?mm_kbd::accentBar(mm_kbd::Lang(s.kbdLang),s.accentTaps,"  "):std::string();
+ if(!accentLetters.empty()){Rect bar={composer.x,composer.y-32,composer.w,28};g.fillRoundRect(bar.x,bar.y,bar.w,bar.h,8,FG);c.centered(bar.x,bar.y+(bar.h-c.lineHeight(Font::ChatTitle))/2,bar.w,accentLetters,Font::ChatTitle,BG);
   g.fillRoundRect(ComposerEmoji.x+2,ComposerEmoji.y+2,ComposerEmoji.w-4,ComposerEmoji.h-5,5,FG);c.centered(ComposerEmoji.x,ComposerEmoji.y+(ComposerEmoji.h-c.lineHeight(Font::ChatTitle))/2,ComposerEmoji.w,"\xc3\xa0",Font::ChatTitle,BG);}
  if(s.emojiPicker){
   g.fillRect(0,EmojiPopup.y-3,W,ComposerY-EmojiPopup.y+3,BG);c.card(EmojiPopup,false,6);
@@ -436,6 +437,7 @@ void Renderer::settings(const State &s){
    case 3:return s.gpsEnabled?"On":"Off";case 6:return "Lights / haptics";
    case 22:return std::string("Lock screen: ")+mm_wallpaper::list[s.wallpaper>=0&&s.wallpaper<mm_wallpaper::count?s.wallpaper:0].name;
    case KeyboardSection:{std::string codes;for(auto l:mm_kbd::Order)if(s.kbdMask&(1u<<int(l))){if(!codes.empty())codes+=" ";codes+=mm_kbd::info(l).code;}return mm_kbd::enabledCount(s.kbdMask)>1?codes+" (Alt + Space)":"Typing: "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).name);}
+   case AccentKeySection:return s.accentMode==1?"Right Shift":s.accentMode==2?"Left Shift":"Off";
    case 21:return "Speaker / microphone";case 20:return "Light timers / auto lock";case 5:return s.status.battery<0?"--%":std::to_string(s.status.battery)+"%";
    case 16:return s.timeSource;case 24:return s.sd?"SD available":"No SD";case 11:return "USB diagnostics";case 17:return "Update your firmware";
    case SupportSection:return s.extraAppsUnlocked?"Support the project":"Support the project, Extra apps";default:return "Version "+s.version;}};
@@ -450,7 +452,7 @@ void Renderer::settings(const State &s){
 }
 void Renderer::section(const State &s){
  const char *title="MatterMesh OS";
- switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;default:break;}
+ switch(s.page){case Page::Antenna:title="Antenna";break;case Page::Storage:title="Storage";break;case Page::Controls:title="Lights / vibration";break;case Page::Audio:title="Sound / dictation";break;case Page::Power:title="Power / timeouts";break;case Page::Wallpaper:title="Wallpaper";break;case Page::Keyboard:title="Keyboard languages";break;case Page::AccentKey:title="Accent key";break;case Page::Mesh:title="Contacts";break;case Page::Radio:title="LoRa";break;case Page::GPS:title="GPS";break;case Page::Maps:title="Maps";break;case Page::Weather:title="Weather";break;case Page::Info:title="About";break;case Page::Support:title=s.extraAppsUnlocked?"Donate":"Donate / Unlock";break;case Page::Files:title="Files";break;case Page::Wifi:title="Wi-Fi";break;case Page::Bluetooth:title="Bluetooth";break;case Page::Terminal:title="Diagnostics";break;case Page::DateTime:title="Date / time";break;case Page::Updates:title="OTA update";break;case Page::Battery:title="Battery";break;default:break;}
  if(s.page==Page::Maps){g.fillScreen(BG);c.statusBar(s.status);}else{shell(s,title);g.fillRect(W-32,StatusH,32,HeaderH-1,BG);}// Maps: no header, the map takes the page
  auto valueCard=[&](Rect r,const std::string &label,const std::string &value){c.card(r);c.text(r.x+7,r.y+4,label,Font::ChatMeta);c.text(r.x+7,r.y+20,value,Font::Bold,FG,r.w-14);};
  auto gb=[](uint64_t bytes){char text[16];if(bytes<1073741824ull)snprintf(text,sizeof(text),"%u MB",unsigned(bytes/1048576));else snprintf(text,sizeof(text),"%.1f GB",bytes/1073741824.0);return std::string(text);};
@@ -649,8 +651,22 @@ void Renderer::section(const State &s){
   if(!s.notice.empty()){c.text(Margin+2,y,s.notice,Font::ChatMeta,FG,W-2*Margin-4);y+=13;}
   std::string howto=mm_kbd::enabledCount(s.kbdMask)>1?"Alt + Space: next language (now "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).code)+")":"Turn on two languages, then Alt + Space switches between them";
   for(auto &line:c.lines(howto,W-2*Margin-4,Font::ChatMeta)){c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}std::string help=rows.empty()?"":mm_kbd::accentHelp(mm_kbd::Lang(rows[focus]));
-  if(!help.empty())help="Left Shift is the accent key. "+help;
+  if(!help.empty())help=s.accentMode==0?"The accent key is off (Settings > Accent key).":std::string(s.accentMode==1?"Right":"Left")+" Shift is the accent key. "+help;
   if(!help.empty())for(auto &line:c.lines(help,W-2*Margin-4,Font::ChatMeta)){if(y>Bottom-12)break;c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}
+ }else if(s.page==Page::AccentKey){
+  // One row per choice: the saved one has a filled dot, the focused one a double outline.
+  const char *names[]={"Off","Right Shift","Left Shift"};
+  const char *details[]={"No accents","Accents in chats","Accents in chats"};
+  for(int i=0;i<3;i++){Rect r=accentRowRect(i);c.card(r);c.text(r.x+10,r.y+5,names[i],Font::ChatBody,FG,r.w-50);c.text(r.x+10,r.y+22,details[i],Font::ChatMeta,FG,r.w-50);
+   int cx=r.x+r.w-20,cy=r.y+r.h/2;g.drawCircle(cx,cy,8,FG);if(s.accentMode==i)g.fillCircle(cx,cy,5,FG);
+   if(s.accentFocus==i)g.drawRoundRect(r.x+2,r.y+2,r.w-4,r.h-4,Radius-1,FG);}
+  // How it works (same text as the Plus): tap before a letter, then the letters of the active keyboard language.
+  int y=AccentInfoY,w=W-2*Margin-4;if(!s.notice.empty()){c.text(Margin+2,y,s.notice,Font::ChatMeta,FG,w);y+=13;}
+  for(auto &line:c.lines("In a chat, tap it before a letter: once for the first accent, twice for the second.",w,Font::ChatMeta)){c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}
+  auto lang=mm_kbd::Lang(s.kbdLang>=0&&s.kbdLang<mm_kbd::LangCount?s.kbdLang:0);
+  for(auto &line:c.lines(std::string(mm_kbd::info(lang).name)+" (Settings > Keyboard languages):",w,Font::ChatMeta)){c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}
+  std::string help=mm_kbd::accentHelp(lang);if(help.empty())help="No accented letters in this language";
+  for(auto &line:c.lines(help,w,Font::ChatMeta)){if(y>Bottom-12)break;c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}
  }else if(s.page==Page::Wallpaper){
   c.sectionLabel(Top+6,"LOCK SCREEN");
   for(int i=0;i<WallpaperCardCount&&i<mm_wallpaper::count;i++){Rect r=wallpaperCardRect(i);bool focus=s.wallpaperFocus==i,active=s.wallpaper==i;c.card(r,focus);
@@ -716,7 +732,7 @@ void Renderer::section(const State &s){
   // Every section has its own page above; anything else (a section number typed on the serial) is a blank card.
   c.icon(Icon::Tools,(W-32)/2,Top+24,32);c.centered(Margin,Top+80,W-2*Margin,"Not available",Font::Bold);
  }
- if(!s.notice.empty()&&s.page!=Page::Radio&&s.page!=Page::Weather&&s.page!=Page::Wifi&&s.page!=Page::Mesh&&s.page!=Page::Maps&&s.page!=Page::Keyboard){c.footer(s.notice,"");}// Keyboard draws its notice above the help
+ if(!s.notice.empty()&&s.page!=Page::Radio&&s.page!=Page::Weather&&s.page!=Page::Wifi&&s.page!=Page::Mesh&&s.page!=Page::Maps&&s.page!=Page::Keyboard&&s.page!=Page::AccentKey){c.footer(s.notice,"");}// Keyboard draws its notice above the help
 }
 #include "quick_settings_renderer.inc"
 #include "cli_renderer.inc"

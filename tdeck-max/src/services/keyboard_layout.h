@@ -73,6 +73,13 @@ inline std::string variant(Lang l,char key,int index,bool upper){
  auto v=variants(l,key);if(!v.count)return std::string();uint32_t cp=v.cp[((index%v.count)+v.count)%v.count];
  return utf8(upper?upperCase(cp):cp);
 }
+// The letters the next key gives after `taps` accent presses (0 = accent held), in key order, separated by `sep`:
+// the bar over the composer while the accent is armed. Empty when the language has none at that count.
+inline std::string accentBar(Lang l,int taps,const char *sep){
+ std::string out;int index=taps>0?taps-1:0;
+ for(char key='a';key<='z';key++){auto v=variants(l,key);if(index>=v.count)continue;if(!out.empty())out+=sep;out+=utf8(v.cp[index]);}
+ return out;
+}
 // Accent key help shown in Settings ("" when the accent key adds nothing). Keys are named as printed on the
 // keycaps (the Cyrillic layouts put ЙЦУКЕН on the QWERTY keys).
 inline const char *accentHelp(Lang l){

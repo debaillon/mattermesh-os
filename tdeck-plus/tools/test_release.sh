@@ -8,7 +8,7 @@ for test in services ringtones first_repeater lock repeater_observer time_sync s
   g++ -std=c++17 -O2 -Isrc "sim/test_${test}.cpp" -o "artifacts/release-tests/${test}"
   "artifacts/release-tests/${test}"
 done
-for test in chat_clear heard_journal channel_remap sd_history; do
+for test in chat_clear heard_journal channel_remap sd_history journal_tail; do
   g++ -std=c++17 -O2 -Isim/journal-stubs -Isrc "sim/test_${test}.cpp" src/mesh/journal.cpp -o "artifacts/release-tests/${test}"
   "artifacts/release-tests/${test}"
 done
@@ -19,7 +19,7 @@ g++ "${ui_flags[@]}" -c src/ui/artwork.cpp -o artifacts/release-tests/artwork.o
 g++ "${ui_flags[@]}" -c src/ui/renderer.cpp -o artifacts/release-tests/renderer.o
 g++ "${ui_flags[@]}" -c 'hardware/lib/Adafruit GFX Library/Adafruit_GFX.cpp' -o artifacts/release-tests/gfx.o
 gcc -O2 -c src/qr/qrcodegen.c -o artifacts/release-tests/qrcodegen.o
-for test in degrees hold_banner todo_text lora_connectivity gps_settings_ui menu_status_lock chat_scopes_unlock channel_gps; do
+for test in degrees hold_banner keyboard_pages todo_text lora_connectivity gps_settings_ui menu_status_lock chat_scopes_unlock channel_gps; do
   g++ "${ui_flags[@]}" "sim/test_${test}.cpp" artifacts/release-tests/components.o artifacts/release-tests/artwork.o artifacts/release-tests/renderer.o artifacts/release-tests/gfx.o artifacts/release-tests/qrcodegen.o -o "artifacts/release-tests/${test}" -lz
   "artifacts/release-tests/${test}"
 done

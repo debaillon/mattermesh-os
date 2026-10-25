@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <string>
+#include <vector>
 // Keyboard languages (Settings > Keyboard languages), shared by the T-Deck Max and Plus: pure functions, no board or
 // font code. The physical keys stay QWERTY; a layout gives each letter key 'a'..'z' its letter, and the accent key
 // (a Shift key) tapped before a key gives the letters that have no key of their own: one tap the first variant, two
@@ -73,11 +74,18 @@ inline std::string variant(Lang l,char key,int index,bool upper){
  auto v=variants(l,key);if(!v.count)return std::string();uint32_t cp=v.cp[((index%v.count)+v.count)%v.count];
  return utf8(upper?upperCase(cp):cp);
 }
+// The letters the next key gives after `taps` accent presses (0 = accent held), in key order, separated by `sep`:
+// the bar over the composer while the accent is armed. Empty when the language has none at that count.
+inline std::string accentBar(Lang l,int taps,const char *sep){
+ std::string out;int index=taps>0?taps-1:0;
+ for(char key='a';key<='z';key++){auto v=variants(l,key);if(index>=v.count)continue;if(!out.empty())out+=sep;out+=utf8(v.cp[index]);}
+ return out;
+}
 // Accent key help shown in Settings ("" when the accent key adds nothing). Keys are named as printed on the
 // keycaps (the Cyrillic layouts put ЙЦУКЕН on the QWERTY keys).
 inline const char *accentHelp(Lang l){
  switch(l){
-  case Lang::Italian:return "Accent + vowel: à è ì ò ù (2 taps + e: é)";
+  case Lang::Italian:return "Accent + vowel: à è ì ò ù (2 taps + e: the other e, é / è)";
   case Lang::German:return "Accent + a o u s e: ä ö ü ß é";
   case Lang::French:return "Accent + e a c u i o y: é à ç ù î ô ÿ (2-4 taps: è ê ë â û ü ï)";
   case Lang::Spanish:return "Accent + vowel: á é í ó ú, + n: ñ (u, 2 taps: ü)";
@@ -104,4 +112,7 @@ inline bool matches(Lang l,const std::string &query){
  std::string q=lower(query);
  return lower(i.code).find(q)!=std::string::npos||lower(i.name).find(q)!=std::string::npos||lower(i.english).find(q)!=std::string::npos;
 }
+// Settings > Keyboard languages rows for a search (ids in Order), and the first row shown so `focus` stays visible.
+inline std::vector<int> rows(const char *query){std::vector<int> out;for(auto l:Order)if(matches(l,query))out.push_back(int(l));return out;}
+inline int firstRow(int focus,int count,int visible){if(count<=0)return 0;if(focus>count-1)focus=count-1;return focus-visible+1>0?focus-visible+1:0;}
 }

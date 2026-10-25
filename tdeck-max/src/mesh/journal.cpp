@@ -25,12 +25,12 @@ static void cache(std::vector<Record> &records,const Record &r){if(records.size(
 // Rows and their file positions are the same as before.
 namespace {
 struct LineReader {
- File &f;std::unique_ptr<uint8_t[]> buf;size_t len=0,at=0;uint32_t base=0;static constexpr size_t Cap=2048;
+ File &f;std::unique_ptr<uint8_t[]> buf;size_t len=0,at=0;uint32_t base=0;bool open=false;static constexpr size_t Cap=2048;// open: the last row has no new line
  explicit LineReader(File &file):f(file),buf(new uint8_t[Cap]){}
  bool next(String &row,uint32_t &position){
   position=base+uint32_t(at);std::string line;
   for(;;){
-   if(at==len){base+=uint32_t(len);len=f.read(buf.get(),Cap);at=0;if(!len){if(line.empty())return false;row=String(line.c_str());return true;}}
+   if(at==len){base+=uint32_t(len);len=f.read(buf.get(),Cap);at=0;if(!len){if(line.empty())return false;row=String(line.c_str());open=true;return true;}}
    auto *start=buf.get()+at;auto *nl=static_cast<uint8_t*>(memchr(start,'\n',len-at));
    if(nl){line.append(reinterpret_cast<char*>(start),size_t(nl-start));at=size_t(nl-buf.get())+1;row=String(line.c_str());return true;}
    line.append(reinterpret_cast<char*>(start),len-at);at=len;
@@ -42,8 +42,8 @@ void Journal::begin(fs::FS &storage,const char *path){dirReady=false;
  fs=&storage;journalPath=path;records.clear();index.clear();healthy=true;clearedChats=readTrackedChats=0;
  for(int c=0;c<CHAT_SLOTS;c++){auto revision=summaries[c].revision+1;summaries[c]=Summary{};summaries[c].revision=revision;readTokens[c]=0;}
  File f=fs->open(journalPath.c_str());if(!f)return;
- LineReader lines(f);uint32_t position=0;String row;
- while(lines.next(row,position)){
+ LineReader lines(f);uint32_t position=0;String row;tailOpen=false;
+ while(lines.next(row,position)){tailOpen=lines.open;
   Record r;
   if(decode(row,r)){
    if(index.find(r.token))continue;MessageIndexEntry e;e.token=r.token;e.chat=r.chat;e.mine=r.mine;e.position=position;e.restored=true;
@@ -82,9 +82,13 @@ bool Journal::readRecordFrom(File &f,uint32_t token,Record &r){
  if(ok&&e->echoPosition){String row;ok=echoRow(e->echoPosition,row);if(ok)echo(r,row);}
  if(ok){r.readLocally=e->readLocally;if(e->restored)rebootStatus(r);}return ok;
 }
+// Every row is appended here. A short write (full card, bus error) leaves a row without its new line: the next row
+// starts with one, so it is not glued to the broken one (begin() sees the same at the end of the file).
 bool Journal::appendRow(const String &row,uint32_t *position){
- ensureDir();File f=fs->open(journalPath.c_str(),FILE_APPEND);if(position)*position=f?f.size():0;
- bool ok=f&&f.print(row)==row.length();if(f){f.flush();f.close();}return ok;
+ ensureDir();File f=fs->open(journalPath.c_str(),FILE_APPEND);if(!f)return false;String out=row;if(tailOpen)out=String("\n")+row;
+ uint32_t before=uint32_t(f.size());if(position)*position=before+(tailOpen?1:0);f.print(out);f.flush();uint32_t after=uint32_t(f.size());f.close();
+ // print() reports the buffered length; a short write (full card) shows in the size after flush()
+ bool ok=after==before+out.length();if(ok)tailOpen=false;else if(after>before)tailOpen=true;return ok;
 }
 bool Journal::append(const Record &r){
  if(!healthy||!fs||!r.token||index.find(r.token)||r.chat<0||r.chat>=CHAT_SLOTS||r.body.length()>160||!r.body.length()||!index.prepare())return false;

@@ -17,7 +17,7 @@ class Journal {
  bool appendRow(const String &row,uint32_t *position=nullptr);
 public:
  struct Summary {Record last;uint32_t total=0,order=0,lastRX=0,lastOwn=0,revision=0;};
- Summary summaries[CHAT_SLOTS];MessageIndex index;bool healthy=true;
+ Summary summaries[CHAT_SLOTS];MessageIndex index;bool healthy=true,tailOpen=false;
  std::vector<Record> records;
  uint32_t clearedChats=0,readTrackedChats=0,readTokens[CHAT_SLOTS]={};
  void begin(fs::FS &storage,const char *path="/mattermesh/messages.tsv");

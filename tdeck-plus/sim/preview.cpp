@@ -41,6 +41,9 @@ int main(int argc,char **argv){
  const char *files[]={"settings","device","mesh","radio","gps","maps","weather","about","files","wifi","bluetooth","terminal","time","updates","battery"};
  state.files={"[DIR] maxchat","[DIR] ripple","[DIR] tiles","config.conf"};state.voltage=4156;
  static_assert(sizeof(pages)/sizeof(pages[0])==sizeof(files)/sizeof(files[0]),"one file name per page");for(size_t i=0;i<sizeof(pages)/sizeof(pages[0]);i++){state.page=pages[i];renderer.draw(state);save(files[i]);}
+ // Accent key page: the help follows the keyboard language in use (Italian, then Russian).
+ {auto keep=state;state.page=mm::Page::AccentKey;state.accentMode=state.accentFocus=1;renderer.draw(state);save("accent-key");
+  state.kbdMask|=1u<<int(mm_kbd::Lang::Russian);state.kbdLang=int(mm_kbd::Lang::Russian);renderer.draw(state);save("accent-key-ru");state=keep;}
  // Keyboard languages: Italian only, then Italian + Russian + Ukrainian (status-bar code, help), search, and a Cyrillic chat.
  {auto keep=state;state.page=mm::Page::Keyboard;state.accentMode=1;renderer.draw(state);save("keyboard-languages");
   state.kbdMask=(1u<<int(mm_kbd::Lang::Italian))|(1u<<int(mm_kbd::Lang::Russian))|(1u<<int(mm_kbd::Lang::Ukrainian));state.kbdLang=int(mm_kbd::Lang::Russian);state.kbdFocus=2;state.status.keyboard="RU";renderer.draw(state);save("keyboard-languages-ru");

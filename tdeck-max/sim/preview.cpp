@@ -55,6 +55,7 @@ int main(int argc,char **argv){
  state.page=mm::Page::Keyboard;state.kbdMask=(1u<<0)|(1u<<6);state.kbdLang=6;state.kbdFocus=6;state.status.keyboard="RU";renderer.draw(state);save("keyboard-languages");
  state.kbdQuery="ukr";state.kbdSearching=true;state.kbdFocus=0;renderer.draw(state);save("keyboard-languages-search");
  state.kbdQuery="";state.kbdSearching=false;state.kbdMask=1;state.kbdLang=0;state.kbdFocus=0;state.status.keyboard="";
+ state.page=mm::Page::AccentKey;state.accentMode=2;state.accentFocus=1;renderer.draw(state);save("accent-key");state.accentMode=state.accentFocus=0;state.notice="Saved";renderer.draw(state);save("accent-key-off");state.notice="";state.accentMode=state.accentFocus=2;
  {auto saved=state.messages;state.page=mm::Page::Chat;state.messages.clear();state.chatName="Москва";state.status.keyboard="RU";
   state.messages.push_back({"Алексей","09:41","Привет! Как дела на перевале?","1 hop | ru",false});state.messages.push_back({"YOU","09:42","Всё хорошо, ветер слабый. Їжак і ґанок.","Sent",true});
   state.messages.push_back({"Олена","09:44","Добрий день! Ми біля хатини, є зв'язок.","2 hop | ua",false});renderer.draw(state);save("chat-cyrillic");state.messages=saved;state.status.keyboard="";}

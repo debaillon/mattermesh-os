@@ -102,7 +102,7 @@ constexpr Rect GpsToggle=SettingsSwitch;
 constexpr int KeyboardSection=12,KeyboardRows=3,KeyboardRowH=28;// one-line rows: name, code / English name, switch
 constexpr Rect KeyboardSearch={Margin+6,Top+6,W-2*(Margin+6),26};
 inline Rect keyboardRowRect(int i){return {Margin,Top+36+i*(KeyboardRowH+2),W-2*Margin,KeyboardRowH};}
-constexpr int KeyboardHelpY=Top+38+KeyboardRows*(KeyboardRowH+2);// four help lines fit below the rows
+constexpr int KeyboardHelpY=Top+38+KeyboardRows*(KeyboardRowH+2);// one how-to line and three help lines fit below the rows
 constexpr int TextSizeSection=31,TextSizeInfoY=Top+126;
 // Date / time (Plus): five spinner boxes DD MM YYYY  HH MM (upper half +, lower half -) and SET at the bottom.
 constexpr int DateTimeBoxY=Top+80,DateTimeBoxH=50;constexpr Rect DateTimeSet={Margin,DateTimeBoxY+DateTimeBoxH+8,W-2*Margin,28};
@@ -110,6 +110,7 @@ inline Rect dateTimeBox(int i){const int w[5]={44,44,66,44,44},gap[5]={0,8,8,24,
 inline Rect textSizeCardRect(int i){return settingsHalf(i,Top+6,112);}
 // Accent key page (Plus, section 32): three choice cards (Off / Right Shift / Left Shift), the help lines below.
 constexpr int AccentKeySection=32,AccentInfoY=Top+92;
+inline constexpr char AccentKeyHowTo[]="In a chat, tap it before a letter: once for the first accent, twice for the second.";
 // Link viewer (section 33, opened from a chat message): a 26 px bar under the status bar (back disc, host / title,
 // PICTURE or PAGE switch), then the page text rows or the picture; round zoom buttons float over a picture.
 constexpr int LinkSection=33,LinkBarH=26,LinkRowH=18;
@@ -277,8 +278,8 @@ constexpr Rect MapStyleButton={W-Margin-60,StatusH+6,60,24},MapBackFloat={6,Stat
 // Quick settings, opened by tapping the status bar: two 0..16 sliders with a
 // label line above each track, then a 2x3 tile grid (index = row*2+column).
 // Section 18 is unused.
-constexpr int QuickSettingsSection=18,QuickSteps=16,QuickTileCount=6;
-enum QuickTile {QuickWifi,QuickBluetooth,QuickGps,QuickSound,QuickPowerOff,QuickReserved};
+constexpr int QuickSettingsSection=18,QuickSteps=16,QuickTileCount=6;// a 3 x 2 grid: five tiles, the sixth place stays empty
+enum QuickTile {QuickWifi,QuickBluetooth,QuickGps,QuickSound,QuickPowerOff};
 // Landscape: shorter slider rows and the six tiles as 3 x 2.
 constexpr int QuickSliderStep=44,QuickTileColumns=3,QuickTileY=(Top+94),QuickTileH=42;
 constexpr Rect quickSliderRect(int row){return {Margin,Top+(20)+row*QuickSliderStep,W-2*Margin,24};}

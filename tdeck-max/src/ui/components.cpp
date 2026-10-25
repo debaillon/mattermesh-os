@@ -30,8 +30,11 @@ static std::string repairDoubleUtf8(const std::string &in){
  return out;}
 // Preserve UTF-8 in storage/protocol. Latin-1 (à è é ...) is drawn by the chat faces; faces without it fold it to
 // ASCII when drawing (latinFold). Typography beyond Latin-1 that phone keyboards insert is mapped to ASCII here.
-static std::string displayText(std::string value){
- value=mentionDisplayText(repairDoubleUtf8(value));
+static std::string displayText(const std::string &in){
+ // Fast path (most strings): every rewrite below needs a mention "@[", a 0xC3 lead (double-encoded UTF-8) or a 0xE2
+ // lead (the typography table), so text without them comes back unchanged with a single copy.
+ if(in.find('\xc3')==std::string::npos&&in.find('\xe2')==std::string::npos&&in.find("@[")==std::string::npos)return in;
+ std::string value=mentionDisplayText(repairDoubleUtf8(in));
  for(auto unit:{std::make_pair("℃","°C"),std::make_pair("℉","°F")}){size_t at=0;while((at=value.find(unit.first,at))!=std::string::npos){value.replace(at,std::string(unit.first).size(),unit.second);at+=std::string(unit.second).size();}}
  static const char *from[]={"’","‘","“","”","„","…","–","—"};
  static const char *to[]={"'","'","\"","\"","\"","...","-","-"};

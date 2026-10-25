@@ -6,22 +6,22 @@
 #include "mesh/message_limits.h"
 namespace mm {
 enum class WeatherPhaseView {Closed,WifiOff,Connecting,NoNetwork,WaitingClock,Locating,Fetching,Ready,Error};
-enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Antenna,Storage,QuickSettings,Cli,ContactPicker,Support,Keyboard };
+enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Antenna,Storage,QuickSettings,Cli,ContactPicker,Support,Keyboard,AccentKey };
 struct Conversation { std::string name,scope,preview,time="--:--",sender,age="--";bool direct=false;int id=0,unread=0,activity=0; };
-struct Message {std::string sender,time,body,meta;bool mine;std::string path,heard,scope;int hops=-1;uint32_t token=0;int repeaters=-1;Message(std::string s="",std::string t="",std::string b="",std::string m="",bool own=false):sender(s),time(t),body(b),meta(m),mine(own){} };
+struct Message {std::string sender,time,body,meta;bool mine;std::string path,heard,scope;int hops=-1;uint32_t token=0;int repeaters=-1;Message(std::string s="",std::string t="",std::string b="",std::string m="",bool own=false):sender(std::move(s)),time(std::move(t)),body(std::move(b)),meta(std::move(m)),mine(own){} };
 struct ContactRow {std::string name,detail;};
 struct Node {std::string name,key;int type=0;bool live=false;uint32_t age=0;float rssi=0,snr=0;int hops=-1;std::string distance;}; // distance: "2.4 km NE" when both positions are known
 struct MapPin {int x=0,y=0;bool repeater=false;std::string name;int step=-1;}; // step: route stop (0 = sender, 1.. = repeaters)
 struct MapSegment {int x0=0,y0=0,x1=0,y1=0;bool dashed=false;};
 struct State {
- const uint8_t *mapBits=nullptr;int mapZoom=0,mapSelfX=-1,mapSelfY=-1,mapScalePx=0;bool mapFollow=false,mapFull=false,messageRouteView=false;std::string mapStatus,mapScaleLabel;std::vector<MapPin> mapPins;std::vector<MapSegment> mapRoute;std::vector<std::string> mapLegend;
+ const uint8_t *mapBits=nullptr;int mapSelfX=-1,mapSelfY=-1,mapScalePx=0;bool mapFollow=false,mapFull=false,messageRouteView=false;std::string mapStatus,mapScaleLabel;std::vector<MapPin> mapPins;std::vector<MapSegment> mapRoute;std::vector<std::string> mapLegend;
  bool historyLoading=false;std::string historyError;
  // CLI (30): raw output lines (wrapped when drawn), prompt, edit line, scroll in wrapped lines from the bottom.
  std::vector<std::string> cliLines;std::string cliPrompt,cliInput;int cliCursor=0,cliScroll=0;bool cliStreaming=false,cliCanPaste=false;
  std::string firstRepeater;
  int vibrationPercent=75;
  bool displayLightEnabled=true,keyboardLightEnabled=true;
- bool audioTranscribing=false,dictationOffline=false,offlineEngineCompiled=false;int audioSeconds=0;bool audioReady=false,audioNotifications=true,audioRecording=false,audioWarming=false,audioBusy=false,dictationConfigured=false;int audioVolume=20;std::string audioMessage;
+ bool audioTranscribing=false,offlineEngineCompiled=false;int audioSeconds=0;bool audioReady=false,audioNotifications=true,audioRecording=false,audioWarming=false,dictationConfigured=false;int audioVolume=20;std::string audioMessage;
  Page page=Page::Home;Status status;
  // MeshCore app link: BLE name / PIN, Wi-Fi (TCP 5000) switch and address, which links are in use.
  std::string appBleName,appPin,appWifiDetail,appBleInput;bool appBleEditing=false,appWifi=false,appBleLinked=false,appUsbLinked=false,appWifiLinked=false;
@@ -30,12 +30,12 @@ struct State {
  // First-boot welcome: step 0 intro, 1 Wi-Fi and clock, 2 band, 3 preset, 4 name, 5 path bytes, 6 summary.
  int welcomeWifiChoice=0,welcomeStep=0,welcomeBand=868,welcomeFocus=0,welcomeScroll=0,welcomeBytes=2;std::string welcomeName,welcomePreset,welcomeArchive;std::vector<std::pair<std::string,std::string>> welcomePresets;
  int wifiOffset=0,wifiFocus=0;std::string wifiSSID,wifiIP,wifiMessage,wifiPasswordMask;struct Network{std::string ssid;int rssi=0;bool secured=true,saved=false;};std::vector<Network> networks;
- bool weatherValid=false,weatherBusy=false,weatherCached=false,locationValid=false,gpsFix=false;
- bool gpsEnabled=true,gpsAvailable=false,gpsData=false,gpsNmeaFresh=false,gpsTimeValid=false,gpsTemporary=false;unsigned gpsUsed=0,gpsVisible=0,gpsBaud=0,gpsNmea=0;
+ bool weatherValid=false,weatherBusy=false,locationValid=false,gpsFix=false;
+ bool gpsEnabled=true,gpsAvailable=false,gpsData=false,gpsNmeaFresh=false,gpsTimeValid=false,gpsTemporary=false;unsigned gpsUsed=0,gpsVisible=0,gpsBaud=0;
  float temperature=0,humidity=0,pressure=0,wind=0,high=0,low=0;int weatherCode=2;double latitude=0,longitude=0,altitude=0;int satellites=0;
  std::string weatherText="No weather data",weatherUpdated,weatherMessage,weatherPlace,weatherSource;
  WeatherPhaseView weatherPhase=WeatherPhaseView::Closed;int weatherNext=0,weatherHours=0;float apparent=0,precipitation=0;int weatherHourCode[4]={};float weatherHourTemp[4]={};std::string weatherHourTime[4];
- uint32_t displayTimeout=30,keyboardTimeout=30;int powerField=0;int wallpaper=0,wallpaperFocus=0;std::string kbdQuery;bool kbdSearching=false;int kbdFocus=0,kbdLang=0;uint32_t kbdMask=1;// lock-screen wallpaper (mm_wallpaper::list index) and the focused card on its page
+ uint32_t displayTimeout=30,keyboardTimeout=30;int powerField=0;int wallpaper=0,wallpaperFocus=0;std::string kbdQuery;bool kbdSearching=false;int kbdFocus=0,kbdLang=0;uint32_t kbdMask=1;int accentMode=2,accentFocus=2,accentTaps=0;// lock-screen wallpaper (mm_wallpaper::list index) and the focused card on its page
 bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
 
  std::string meshCoreVersion=MM_MESHCORE_VERSION;

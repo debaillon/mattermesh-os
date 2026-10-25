@@ -22,6 +22,12 @@
 #include <cmath>
 #include <algorithm>
 namespace mm {
+
+std::string accentBarText(const State &s){return mm_kbd::accentBar(mm_kbd::Lang(s.kbdLang),s.accentTaps,"  ");}// "": no bar (English)
+std::string keyboardHowto(const State &s){return mm_kbd::enabledCount(s.kbdMask)>1?"Alt + Space: next language (now "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).code)+")":std::string("Turn on two languages for Alt + Space");}
+std::string keyboardHelp(const State &s,int lang){std::string help=mm_kbd::accentHelp(mm_kbd::Lang(lang));if(help.empty())return help;
+ return (s.accentMode==1?"Right Shift: accent. ":s.accentMode==2?"Left Shift: accent. ":"Accent key off (Settings > Accent key). ")+help;}
+std::string upperAscii(std::string text){for(auto &ch:text)if(ch>='a'&&ch<='z')ch-=32;return text;}
 // "42s", "5m", "3h": time since a node was heard.
 static std::string agoText(uint32_t sec){return sec<60?std::to_string(sec)+"s":sec<3600?std::to_string(sec/60)+"m":std::to_string(sec/3600)+"h";}
 // Contact row detail: signal, age and route of a node heard since boot.
@@ -89,7 +95,7 @@ void Renderer::quickReply(const State &s){
  auto panel=QuickReplyPanel;
  // Plus: the lock picture stays visible behind a translucent veil (no dark band), the panel slightly see-through.
  {auto &canvas=static_cast<FastCanvas16&>(g);canvas.tint(0,StatusH,W,H-StatusH,BG,9);canvas.tint(panel.x,panel.y,panel.w,panel.h,Surface,14);g.drawRoundRect(panel.x,panel.y,panel.w,panel.h,Radius,Line);}
- c.text(panel.x+8,panel.y+QuickTitleDY,"Quick Reply",Font::ChatTitle,FG,panel.w-16);if(s.accent&&!s.quickSent)c.text(panel.x+8+c.width("Quick Reply  ",Font::ChatTitle),panel.y+QuickTitleDY,"\xc3\xa0 \xc3\xa8 \xc3\xa9 \xc3\xac \xc3\xb2 \xc3\xb9",Font::ChatTitle,FG);
+ c.text(panel.x+8,panel.y+QuickTitleDY,"Quick Reply",Font::ChatTitle,FG,panel.w-16);if(s.accent&&!s.quickSent){int x=panel.x+8+c.width("Quick Reply  ",Font::ChatTitle);c.text(x,panel.y+QuickTitleDY+3,accentBarText(s),Font::ChatMeta,FG,panel.x+panel.w-60-x);}
  if(!s.quickSent&&s.quickInput.size()>MessageCounterThreshold){auto count=std::to_string(s.quickInput.size())+"/"+std::to_string(s.quickMessageLimit);int width=c.width(count,Font::ChatMeta);c.text(panel.x+panel.w-8-width,panel.y+QuickTitleDY+3,count,Font::ChatMeta);}
  c.text(panel.x+8,panel.y+QuickChannelDY,s.quickChannel,Font::ChatMeta,FG,panel.w-16);
  c.text(panel.x+8,panel.y+QuickSenderDY,senderDisplayName(s.quickSender),Font::ChatBody,FG,panel.w-16);
@@ -313,9 +319,10 @@ void Renderer::chat(const State &s){
  else {auto tail=c.inputTail(s.input.substr(0,caretByte),inputWidth-3,Font::ChatText);int caretX=inputX+c.width(tail,Font::ChatText)+1;c.text(inputX,composer.y+9,tail,Font::ChatText);
   if(caretByte<s.input.size()&&caretX+4<inputX+inputWidth)c.text(caretX+3,composer.y+9,s.input.substr(caretByte),Font::ChatText,FG,inputX+inputWidth-caretX-3);g.fillRect(caretX,composer.y+8,2,15,Accent);}
  g.drawFastVLine(ComposerEmoji.x-2,composer.y+5,composer.h-10,Line);{constexpr int B=mm_emoji_picker::ButtonSize;if(s.emojiPicker)c.fillRound(ComposerEmoji.x+2,ComposerEmoji.y+2,ComposerEmoji.w-4,ComposerEmoji.h-5,5,FG);g.drawBitmap(ComposerEmoji.x+(ComposerEmoji.w-B)/2,ComposerEmoji.y+(ComposerEmoji.h-B)/2-1,mm_emoji_picker::button,B,B,s.emojiPicker?BG:FG);}
- // Accent key held or armed (left Shift): the accented letters show above the composer, the emoji button shows "à".
- if(s.accent){Rect bar={composer.x,composer.y-32,composer.w,28};c.fillRound(bar.x,bar.y,bar.w,bar.h,8,FG);c.centered(bar.x,bar.y+(bar.h-c.lineHeight(Font::ChatTitle))/2,bar.w,"\xc3\xa0  \xc3\xa8  \xc3\xa9  \xc3\xac  \xc3\xb2  \xc3\xb9",Font::ChatTitle,BG);}
- if(s.accent){c.fillRound(ComposerEmoji.x+2,ComposerEmoji.y+2,ComposerEmoji.w-4,ComposerEmoji.h-5,5,FG);c.centered(ComposerEmoji.x,ComposerEmoji.y+(ComposerEmoji.h-c.lineHeight(Font::ChatTitle))/2,ComposerEmoji.w,"\xc3\xa0",Font::ChatTitle,BG);}
+ // Accent key held or armed: the letters the next key gives (language and taps) show above the composer, and the
+ // emoji button turns into an accent mark with the tap count.
+ if(s.accent){auto letters=accentBarText(s);if(!letters.empty()){Rect bar={composer.x,composer.y-32,composer.w,28};c.fillRound(bar.x,bar.y,bar.w,bar.h,8,FG);c.centered(bar.x,bar.y+(bar.h-c.lineHeight(Font::ChatTitle))/2,bar.w,letters,Font::ChatTitle,BG);}
+  c.fillRound(ComposerEmoji.x+2,ComposerEmoji.y+2,ComposerEmoji.w-4,ComposerEmoji.h-5,5,FG);c.centered(ComposerEmoji.x,ComposerEmoji.y+(ComposerEmoji.h-c.lineHeight(Font::ChatTitle))/2,ComposerEmoji.w,s.accentTaps>1?"\xc2\xb4"+std::to_string(s.accentTaps):std::string("\xc2\xb4"),Font::ChatTitle,BG);}
  if(s.emojiPicker)emojiPopup(s);
  if(s.messageMenu){Rect info=dialogPanel();c.text(info.x+8,info.y+8,"Chat options",Font::ChatTitle);const char *labels[]={"Region scope","Add region scope","Clear chat","Send GPS position"};for(int i=0;i<ChatOptionCount;i++)c.button(chatOptionRect(i),labels[i],s.chatMenuFocus==i);}
  if(s.scopePicker){
@@ -772,10 +779,13 @@ void Renderer::section(const State &s){
   for(int i=0;i<3;i++){Rect r=accentCardRect(i);bool focus=s.accentFocus==i,active=s.accentMode==i;c.fillRound(r.x,r.y,r.w,r.h,9,Surface);if(focus){g.drawRoundRect(r.x,r.y,r.w,r.h,9,Accent);g.drawRoundRect(r.x+1,r.y+1,r.w-2,r.h-2,8,Accent);}
    c.text(r.x+8,r.y+10,names[i],Font::Bold,FG,r.w-30);auto rows=c.lines(detail[i],r.w-16,Font::ChatMeta);for(int k=0;k<int(rows.size())&&k<2;k++)c.text(r.x+8,r.y+32+k*c.lineHeight(Font::ChatMeta),rows[k],Font::ChatMeta,Muted,r.w-16);
    if(active){g.fillCircle(r.x+r.w-12,r.y+12,7,Accent);c.centered(r.x+r.w-19,r.y+8,14,"v",Font::Bold,OnAccent);}}
-  c.sectionLabel(AccentInfoY,"ACCENTS",s.accentMode==s.accentFocus?"ACTIVE":"TAP OR ENTER TO APPLY");
-  c.text(Margin+2,AccentInfoY+18,"In a chat: hold it (or tap it) and press a vowel",Font::ChatBody,FG,W-2*Margin-4);
-  c.text(Margin+2,AccentInfoY+36,"\xc3\xa0 \xc3\xa8 \xc3\xa9 \xc3\xac \xc3\xb2 \xc3\xb9  /  \xc3\xa9 after \"ch\", in \"n\xc3\xa9\" and \"s\xc3\xa9\"",Font::ChatBody,FG,W-2*Margin-4);
-  c.text(Margin+2,AccentInfoY+56,"Elsewhere both Shift keys type capitals",Font::ChatMeta,Muted,W-2*Margin-4);
+  c.sectionLabel(AccentInfoY,"ACCENTS",!s.notice.empty()?upperAscii(s.notice):s.accentMode==s.accentFocus?"ACTIVE":"TAP OR ENTER TO APPLY");// the notice replaces the footer, which would cover the help
+  // How the key works, then the letters of the language in use (they change with Settings > Keyboard languages).
+  const int tw=W-2*Margin-4;int y=AccentInfoY+18;
+  for(auto &line:c.lines(AccentKeyHowTo,tw,Font::ChatBody)){c.text(Margin+2,y,line,Font::ChatBody,FG,tw);y+=c.lineHeight(Font::ChatBody);}
+  auto lang=mm_kbd::Lang(s.kbdLang);y+=3;
+  const int lh=c.lineHeight(Font::ChatMeta);c.text(Margin+2,y,std::string(mm_kbd::info(lang).name)+" (Settings > Keyboard languages):",Font::ChatMeta,Muted,tw);y+=lh+1;
+  int rows=(H-2-y)/lh;if(rows>0)for(auto &line:c.clampLines(mm_kbd::accentHelp(lang),tw,Font::ChatMeta,rows,"..")){c.text(Margin+2,y,line,Font::ChatMeta,FG,tw);y+=lh;}
  }else if(s.page==Page::TextSize){
   // Two sample cards drawn with their own face; the active one is ticked, the focused one outlined.
   const char *names[]={"Compact","Large"};const char *detail[]={"11 px / 16 px rows","12 px / 17 px rows"};bool large=chatTextLarge();
@@ -845,8 +855,8 @@ void Renderer::section(const State &s){
   c.card(KeyboardSearch);auto tail=c.inputTail(s.kbdQuery,KeyboardSearch.w-40,Font::ChatBody);
   c.text(KeyboardSearch.x+7,KeyboardSearch.y+5,s.kbdQuery.empty()?(s.kbdSearching?"Type a language...":"Search languages"):tail,Font::ChatBody,s.kbdQuery.empty()?Muted:FG,KeyboardSearch.w-36);
   if(s.kbdSearching)g.drawFastVLine(KeyboardSearch.x+8+c.width(tail,Font::ChatBody),KeyboardSearch.y+5,16,FG);c.icon(Icon::Search,KeyboardSearch.x+KeyboardSearch.w-22,KeyboardSearch.y+5,16,Muted);
-  std::vector<int> rows;for(auto l:mm_kbd::Order)if(mm_kbd::matches(l,s.kbdQuery))rows.push_back(int(l));
-  int focus=rows.empty()?0:std::min(std::max(s.kbdFocus,0),int(rows.size())-1),first=std::max(0,focus-KeyboardRows+1);
+  auto rows=mm_kbd::rows(s.kbdQuery.c_str());
+  int focus=rows.empty()?0:std::min(std::max(s.kbdFocus,0),int(rows.size())-1),first=mm_kbd::firstRow(focus,int(rows.size()),KeyboardRows);
   for(int i=0;i<KeyboardRows&&first+i<int(rows.size());i++){int id=rows[first+i];auto &info=mm_kbd::info(mm_kbd::Lang(id));Rect r=keyboardRowRect(i);bool on=s.kbdMask&(1u<<id);
    std::string detail=on&&id==s.kbdLang&&mm_kbd::enabledCount(s.kbdMask)>1?std::string("In use (")+info.code+")":std::string(info.code)+(std::string(info.english)!=info.name?std::string(" / ")+info.english:"");
    c.card(r);c.icon(Icon::Keyboard,r.x+6,r.y+(r.h-24)/2,24,FG);const int pw=44,px=r.x+r.w-pw-6,py=r.y+(r.h-22)/2,ty=r.y+(r.h-c.lineHeight(Font::ChatBody))/2+1;
@@ -854,12 +864,10 @@ void Renderer::section(const State &s){
    if(on)c.fillRound(px,py,pw,22,11,Accent);else g.drawRoundRect(px,py,pw,22,11,Muted);c.centered(px,py+5,pw,on?"ON":"OFF",Font::Bold,on?OnAccent:FG);
    if(first+i==focus&&!s.kbdSearching&&!s.hideFocus)g.drawRoundRect(r.x+1,r.y+1,r.w-2,r.h-2,Radius,Accent);}
   if(rows.empty())c.centered(Margin,Top+80,W-2*Margin,"No language matches",Font::ChatBody);
-  int y=KeyboardHelpY;
-  std::string howto=mm_kbd::enabledCount(s.kbdMask)>1?"Alt + Space: next language (now "+std::string(mm_kbd::info(mm_kbd::Lang(s.kbdLang)).code)+")":"Turn on two languages, then Alt + Space switches between them";
-  if(!s.notice.empty()){c.text(Margin+2,y,s.notice,Font::ChatMeta,Accent,W-2*Margin-4);y+=13;}// the notice takes the how-to line
-  else for(auto &line:c.lines(howto,W-2*Margin-4,Font::ChatMeta)){c.text(Margin+2,y,line,Font::ChatMeta);y+=13;}std::string help=rows.empty()?"":mm_kbd::accentHelp(mm_kbd::Lang(rows[focus]));
-  if(!help.empty())help=(s.accentMode==1?"Right Shift is the accent key. ":s.accentMode==2?"Left Shift is the accent key. ":"Turn on the accent key (Settings > Accent key). ")+help;
-  int helpRows=(H-2-y)/13;if(helpRows>0)for(auto &line:c.clampLines(help,W-2*Margin-4,Font::ChatMeta,helpRows,"..")){c.text(Margin+2,y,line,Font::ChatMeta,Muted);y+=13;}
+  // One line (the notice, or how Alt + Space works), then the accent help of the focused language (keyboardHelp).
+  int y=KeyboardHelpY;const int lh=c.lineHeight(Font::ChatMeta),tw=W-2*Margin-4;
+  if(!s.notice.empty())c.text(Margin+2,y,s.notice,Font::ChatMeta,Accent,tw);else c.text(Margin+2,y,keyboardHowto(s),Font::ChatMeta,FG,tw);y+=lh;
+  int helpRows=(H-2-y)/lh;if(helpRows>0&&!rows.empty())for(auto &line:c.clampLines(keyboardHelp(s,rows[focus]),tw,Font::ChatMeta,helpRows,"..")){c.text(Margin+2,y,line,Font::ChatMeta,Muted);y+=lh;}
  }else if(s.page==Page::DateTime){
   valueCard({Margin,Top+6,W-2*Margin,40},"NOW",s.status.clock+"   "+s.date);
   c.text(Margin+2,Top+49,"Synchronised from: "+s.timeSource,Font::ChatMeta,Muted,W-2*Margin);// ends above the SET BY HAND label
@@ -890,7 +898,7 @@ void Renderer::section(const State &s){
   c.centered(Margin,Top+80,W-2*Margin,line,Font::Bold);
   if(s.page==Page::Terminal){c.text(Margin,Top+112,"status / shot / home / apps",Font::Body);c.text(Margin,Top+134,"Existing USB commands preserved",Font::Small);}
  }
- if(!s.notice.empty()&&s.page!=Page::Radio&&s.page!=Page::Weather&&s.page!=Page::Wifi&&s.page!=Page::Keyboard){c.footer(s.notice,"");}// Keyboard draws its notice above the help
+ if(!s.notice.empty()&&s.page!=Page::Radio&&s.page!=Page::Weather&&s.page!=Page::Wifi&&s.page!=Page::Keyboard&&s.page!=Page::AccentKey){c.footer(s.notice,"");}// Keyboard and Accent key draw their notice above the help
 }
 #include "quick_settings_renderer.inc"
 #include "cli_renderer.inc"

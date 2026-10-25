@@ -1,8 +1,6 @@
 #include "radar.h"
 #include "https.h"
 #include "connectivity.h"
-#include "ui/build_info.h"
-#include "board/device_model.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>

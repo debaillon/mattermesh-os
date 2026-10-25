@@ -1,5 +1,7 @@
 #include "Preferences.h"
 #include "emu_hal.h"
+#include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <map>
@@ -153,6 +155,10 @@ bool Preferences::put(const char *key, PreferenceType type, const void *data,
                       size_t n) {
   if (!started_ || readOnly_ || !valid(key) || !data || !n)
     return false;
+  // Tests: MM_EMU_FAIL_KEY=<namespace>/<key> makes every write of that key fail, like a full or broken NVS.
+  if (const char *fail = getenv("MM_EMU_FAIL_KEY"))
+    if (ns_ + "/" + key == fail)
+      return false;
   std::lock_guard<std::mutex> g(nvsMutex);
   auto store = load();
   auto p = static_cast<const uint8_t *>(data);

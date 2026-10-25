@@ -1,8 +1,8 @@
 #pragma once
 #include <string>
 namespace device {
-// Left Shift is the accent key: the vowel typed after it becomes à è ì ò ù. "é" after "ch" (perché, poiché, finché,
-// benché ...) and in the words "né" / "sé"; upper case with the right Shift or when the vowel opens a sentence ("È").
+// Italian, one accent-key tap before a vowel: à è ì ò ù. "é" after "ch" (perché, poiché, finché, benché ...) and in
+// the words "né" / "sé"; upper case with Shift or when the vowel opens a sentence ("È").
 // `before` is the text in front of the caret (UTF-8). Not a vowel: empty string, the key is typed as it is.
 inline std::string accented(char vowel,const std::string &before,bool upper){
  char v=char(vowel|0x20);const char *vowels="aeiou";int index=-1;for(int i=0;i<5;i++)if(vowels[i]==v)index=i;if(index<0)return std::string();

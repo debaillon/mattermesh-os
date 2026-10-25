@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <vector>
 #include <cassert>
 #include <iostream>
@@ -141,11 +142,24 @@ int main(){
  {const int line=mm::Components::lineHeight(mm::Font::ChatMeta),wrap=mm::W-2*mm::Margin-4;assert(22+line<=mm::KeyboardRowH-3);
   auto last=mm::keyboardRowRect(mm::KeyboardRows-1);assert(last.y+last.h<mm::KeyboardHelpY&&mm::KeyboardSearch.y+mm::KeyboardSearch.h<mm::keyboardRowRect(0).y);
   int howto=int(c.lines("Turn on two languages, then Alt + Space switches between them",wrap,mm::Font::ChatMeta).size());
-  for(int i=0;i<mm_kbd::LangCount;i++){std::string help=mm_kbd::accentHelp(mm_kbd::Lang(i));int n=1+howto+(help.empty()?0:int(c.lines("Left Shift is the accent key. "+help,wrap,mm::Font::ChatMeta).size()));
+  for(int i=0;i<mm_kbd::LangCount;i++){std::string help=mm_kbd::accentHelp(mm_kbd::Lang(i));int n=1+howto+(help.empty()?0:std::max({int(c.lines("Left Shift is the accent key. "+help,wrap,mm::Font::ChatMeta).size()),int(c.lines("Right Shift is the accent key. "+help,wrap,mm::Font::ChatMeta).size()),int(c.lines("The accent key is off (Settings > Accent key).",wrap,mm::Font::ChatMeta).size())}));
    assert(mm::KeyboardHelpY+(n-1)*line<=mm::Bottom-12);}}
+ // Accent key page: three rows inside the screen above the help; for every choice the help (with a notice line) fits,
+ // the saved choice is marked, and the notice is not copied into the footer.
+ {for(int i=0;i<3;i++){auto r=mm::accentRowRect(i);assert(r.y>=mm::Top&&r.y+r.h<mm::AccentInfoY);}
+  mm::State a;a.page=mm::Page::AccentKey;mm::Renderer renderer(canvas);
+  for(int mode=0;mode<3;mode++){a.accentMode=a.accentFocus=mode;a.notice="Saved";renderer.draw(a);
+   std::vector<uint8_t> withNotice(canvas.getBuffer()+mm::W/8*mm::FooterY,canvas.getBuffer()+mm::W/8*mm::H);a.notice="";renderer.draw(a);
+   assert(!memcmp(withNotice.data(),canvas.getBuffer()+mm::W/8*mm::FooterY,withNotice.size()));
+   auto r=mm::accentRowRect(mode);assert(canvas.getPixel(r.x+r.w-20,r.y+r.h/2));// filled dot on the saved choice
+   for(int other=0;other<3;other++)if(other!=mode){auto o=mm::accentRowRect(other);assert(!canvas.getPixel(o.x+o.w-20,o.y+o.h/2));}}
+  const int line=mm::Components::lineHeight(mm::Font::ChatMeta),wrap=mm::W-2*mm::Margin-4;
+  for(int l=0;l<mm_kbd::LangCount;l++){int n=1+int(c.lines(std::string(mm_kbd::info(mm_kbd::Lang(l)).name)+" (Settings > Keyboard languages):",wrap,mm::Font::ChatMeta).size())+int(c.lines("In a chat, tap it before a letter: once for the first accent, twice for the second.",wrap,mm::Font::ChatMeta).size())+int(c.lines(mm_kbd::accentHelp(mm_kbd::Lang(l))[0]?mm_kbd::accentHelp(mm_kbd::Lang(l)):"No accented letters in this language",wrap,mm::Font::ChatMeta).size());
+   assert(22+line<=mm::AccentRowH-3&&mm::AccentInfoY+(n-1)*line<=mm::Bottom-12);}
+  }
  // The Keyboard page shows its notice once, above the help: no footer copy at the bottom.
  {mm::State k;k.page=mm::Page::Keyboard;mm::Renderer renderer(canvas);renderer.draw(k);
   std::vector<uint8_t> plain(canvas.getBuffer()+mm::W/8*mm::FooterY,canvas.getBuffer()+mm::W/8*mm::H);
   k.notice="Save failed";renderer.draw(k);assert(!memcmp(plain.data(),canvas.getBuffer()+mm::W/8*mm::FooterY,plain.size()));}
- std::cout<<"PASS: panel bounds, keyboard-language rows and help, grid separation, form/control bounds, unbroken message wrap, no-op/partial/full refresh planning, maximum-length message rendering, Home clock/date/status visible-ink centering.\n";
+ std::cout<<"PASS: panel bounds, keyboard-language rows and help, accent key page, grid separation, form/control bounds, unbroken message wrap, no-op/partial/full refresh planning, maximum-length message rendering, Home clock/date/status visible-ink centering.\n";
 }

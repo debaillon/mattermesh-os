@@ -50,7 +50,6 @@ bool bleCompanionTake(uint8_t *frame,size_t &len){BleFrame f;if(!bleInbox||xQueu
 bool bleCompanionSend(const uint8_t *frame,size_t len){if(!bleTx||!bleConnected||!bleSubscribed)return false;bleTx->setValue(frame,len);return bleTx->notify();}
 bool bleCompanionConnected(){return bleConnected&&bleSubscribed;}
 String bleCompanionName(){return bleName;}
-uint32_t bleCompanionPin(){return blePin;}
 static Callbacks callbacks;
 static WifiRetryPolicy retryPolicy;static WifiConnectionStart connectionStart;static bool staged=false;static String pendingSSID,pendingPassword;static std::atomic<int> disconnectReason{0};static std::atomic<bool> freshIP{false};
 static void wipe(String &value){for(unsigned i=0;i<value.length();i++)value.setCharAt(i,0);value="";}
@@ -70,10 +69,12 @@ static bool startBLE(){
  advertising->setAdvertisementData(adv);advertising->setScanResponseData(scan);
  bleInitialized=advertising->start();if(!bleInitialized){NimBLEDevice::deinit(true);server=nullptr;}return bleInitialized;
 }
-void bleEnabled(bool enabled){
+void bleEnabled(bool enabled,bool boot){
  bleRequested=enabled;if(enabled){state.bleReady=startBLE();state.ble=state.bleReady;}
  else{if(bleInitialized){server->advertiseOnDisconnect(false);NimBLEDevice::stopAdvertising();for(auto handle:server->getPeerDevices())server->disconnect(handle);}bleConnected=false;state.ble=state.bleReady=state.bleClient=false;}
- preferences.putBool("ble",state.ble);state.revision++;
+ // From the UI the result is saved, so the switch and NVS agree; at boot nothing is written, so a start that fails
+ // there (low memory) leaves the saved choice and retries on the next boot.
+ if(!boot)preferences.putBool("ble",state.ble);state.revision++;
 }
 // Known Wi-Fi networks (newest first, up to KnownMax): every network joined once keeps its password, so it is never
 // asked again and the device reconnects to whichever of them is around. NVS "networks" (JSON).
@@ -111,7 +112,7 @@ void connectivityBegin(){
  pickSaved();state.remembered=!known.empty();
  bool wifi=preferences.getBool("wifi",true),ble=preferences.getBool("ble",true);WiFi.persistent(false);
  WiFi.onEvent([](arduino_event_id_t event,arduino_event_info_t info){if(event==ARDUINO_EVENT_WIFI_STA_DISCONNECTED){disconnectReason.store(info.wifi_sta_disconnected.reason);freshIP=false;}else if(event==ARDUINO_EVENT_WIFI_STA_GOT_IP)freshIP=true;});
- wifiEnabled(wifi,false);bleEnabled(ble);
+ wifiEnabled(wifi,false);bleEnabled(ble,true);
 }
 static std::vector<AccessPoint> accessPoints;static uint32_t scanCount=0;
 uint32_t wifiScanCount(){return scanCount;}

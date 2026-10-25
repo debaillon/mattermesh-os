@@ -66,7 +66,7 @@ void mapCompose(mm::State &v){
  if(!mapViewBits)mapViewBits=mapAllocView(a);if(!mapViewBits)return;
  auto gps=device::locationState();if(mapView.follow&&gps.fix){mapView.lat=gps.latitude;mapView.lon=gps.longitude;}
  const int w=a.w,h=a.h,z=mapView.zoom;int missing=mapComposeTiles(mapViewBits,a,mapView.lat,mapView.lon,z,1);
- mapMissingCount=missing;v.mapBits=mapViewBits;v.mapZoom=z;v.mapFollow=mapView.follow;
+ mapMissingCount=missing;v.mapBits=mapViewBits;v.mapFollow=mapView.follow;
  auto center=device::mapProject(mapView.lat,mapView.lon,z);double north,west,south,east;device::mapUnproject({center.x-w/2.0,center.y-h/2.0},z,north,west);device::mapUnproject({center.x+w/2.0,center.y+h/2.0},z,south,east);
  matter::NodePin pins[24];int count=matter::nodePins(south,west,north,east,pins,24);
  for(int i=0;i<count;i++){double x,y;mapScreen(a,pins[i].lat,pins[i].lon,mapView.lat,mapView.lon,z,x,y);if(!mapInside(a,x,y))continue;mm::MapPin pin;pin.x=lround(x);pin.y=lround(y);pin.repeater=pins[i].repeater;pin.name=mm::senderDisplayName(pins[i].name);v.mapPins.push_back(pin);}

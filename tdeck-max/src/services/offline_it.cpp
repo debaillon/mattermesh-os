@@ -26,7 +26,6 @@ std::atomic<uint32_t> modelBytes{0},workspaceBytes{0},elapsedMs{0},progress{0};s
 std::atomic<uint32_t> stage{0},opIndex{0},stackMin{0},internalMin{0},psramMin{0},loadMs{0},featuresMs{0},lastOpMs{0},maxOpMs{0},depthwiseMs{0},pointwiseMs{0},cores{0};
 std::atomic<uint32_t> modelOps{0},residentOps{0},prefixBytes{0},sdBytes{0},sdReadMs{0},sdWaitMs{0},sdReads{0},prefetchHits{0};
 }
-const char *offlineItalianModelPath(){return MODEL_PATH;}
 void offlineItalianReset(){modelBytes=workspaceBytes=elapsedMs=progress=0;macs=0;lastError=0;modelReady=false;stage=opIndex=stackMin=internalMin=psramMin=loadMs=featuresMs=lastOpMs=maxOpMs=depthwiseMs=pointwiseMs=cores=0;modelOps=residentOps=prefixBytes=sdBytes=sdReadMs=sdWaitMs=sdReads=prefetchHits=0;}
 OfflineItalianMetrics offlineItalianMetrics(){OfflineItalianMetrics m;m.compiled=OFFLINE_ITALIAN_COMPILED;m.modelReady=modelReady;m.modelBytes=modelBytes;m.workspaceBytes=workspaceBytes;m.elapsedMs=elapsedMs;m.progress=progress;m.macs=macs;m.error=lastError;m.stage=stage;m.op=opIndex;m.stackMin=stackMin;m.internalMin=internalMin;m.psramMin=psramMin;m.loadMs=loadMs;m.featuresMs=featuresMs;m.lastOpMs=lastOpMs;m.maxOpMs=maxOpMs;m.depthwiseMs=depthwiseMs;m.pointwiseMs=pointwiseMs;m.cores=cores;m.modelOps=modelOps;m.residentOps=residentOps;m.prefixBytes=prefixBytes;m.sdBytes=sdBytes;m.sdReadMs=sdReadMs;m.sdWaitMs=sdWaitMs;m.sdReads=sdReads;m.prefetchHits=prefetchHits;return m;}
 #if defined(MM_OFFLINE_ITALIAN) && MM_OFFLINE_ITALIAN

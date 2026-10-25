@@ -20,6 +20,6 @@ void bleCompanionConfig(const String &nodeName,uint32_t pin);// call before bleE
 // User-chosen BLE name after "MeshCore-" (empty: the node name); applied at once, also while advertising.
 void bleCompanionCustomName(const String &name);constexpr unsigned BLE_NAME_MAX_BYTES=20;
 bool bleCompanionTake(uint8_t *frame,size_t &len);bool bleCompanionSend(const uint8_t *frame,size_t len);bool bleCompanionConnected();
-String bleCompanionName();uint32_t bleCompanionPin();
-void connectivityLowPower(bool locked);void connectivityBegin();void connectivityLoop();ConnectivityState connectivityState();void wifiEnabled(bool enabled,bool persist=true);/* persist=false: temporary switch (weather lookup, boot restore) */void bleEnabled(bool enabled);void scan();uint32_t wifiScanCount();std::vector<AccessPoint> wifiAccessPoints();void reconnect();bool connect(const String &ssid,const String &password);void disconnect();
+String bleCompanionName();
+void connectivityLowPower(bool locked);void connectivityBegin();void connectivityLoop();ConnectivityState connectivityState();void wifiEnabled(bool enabled,bool persist=true);/* persist=false: temporary switch (weather lookup, boot restore) */void bleEnabled(bool enabled,bool boot=false);void scan();uint32_t wifiScanCount();std::vector<AccessPoint> wifiAccessPoints();void reconnect();bool connect(const String &ssid,const String &password);void disconnect();
 }

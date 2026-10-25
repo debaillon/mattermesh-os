@@ -44,7 +44,7 @@ Headless tests: `--script FILE` plays timed inputs through the emulated chips (f
 `emu/devices/script.cpp`: key, tap, type, touch, click, roll, press, serial, usb, shot, quit).
 Tests: `emu/tests/run_core_tests.sh` (core), `emu/tests/run_sx1262_tests.sh` (SX1262 + air, real RadioLib/MeshCore),
 `emu/tests/smoke_plus.sh` (boot, Home, keyboard, touch), `emu/tests/mesh_plus.sh` (two T-Decks: adverts + a typed
-Public message), `emu/tests/companion_plus.sh` (Wi-Fi join + companion protocol over TCP).
+Public message), `emu/tests/companion_plus.sh` (Wi-Fi join + companion protocol over TCP), `emu/tests/keyboard_plus.sh` (keyboard languages, accent taps, Alt + Space), `emu/tests/save_fail_plus.sh` (settings that cannot be saved stay as they were; `MM_EMU_FAIL_KEY=<namespace>/<key>` makes that NVS key unwritable), `emu/tests/ota_rollback_plus.sh` (OTA boot state: rollback counted per build, Free -> Full edition check).
 The serial console is the terminal: every firmware serial command works (type it and press Enter).
 
 ## Keys

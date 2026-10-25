@@ -12,6 +12,7 @@
 #include "ui/build_info.h"
 #include "services/hex_util.h"
 #include "services/connectivity.h"
+#include <SD.h>
 
 // The Arduino core marks every image valid at boot unless this returns true; otaLoop() does it once healthy.
 extern "C" bool verifyRollbackLater(){return true;}
@@ -30,7 +31,9 @@ static const uint8_t LicenseKey[32]={0x4f,0x30,0xf1,0x95,0x9a,0xd3,0x8e,0xa8,0x3
 // a license for this device; Full images are signed for "<board>-full".
 static const char *Edition="free";
 static Preferences preferences;static OtaState state;static SemaphoreHandle_t mutex=nullptr;static bool busy=false,healthy=false,checkedOnce=false;
-static uint32_t connectedAt=0,lastCheck=0;static int32_t rejected=0;static String servers,pendingReport,pendingDetail,sha256,signature,path,license;
+// rejected: a build that rolled back twice is no longer offered (one rollback can be a power cut in the first 30 s).
+// offerEdition: edition of the release on offer, saved with "try" so a Free -> Full switch that rolls back is seen.
+static uint32_t connectedAt=0,lastCheck=0,restartAt=0;static int32_t rejected=0;static String servers,pendingReport,pendingDetail,sha256,signature,path,license,offerEdition,rejectedEdition;
 struct Report {String server,status,detail;int32_t code;};
 
 const char *otaBoard(){
@@ -80,15 +83,16 @@ static void sendReport(const Report &report){
 }
 
 static void checkWorker(void*){
+ xSemaphoreTake(mutex,portMAX_DELAY);bool hadOffer=state.phase==OtaPhase::Available;String offerMessage=state.message;xSemaphoreGive(mutex);
  setPhase(OtaPhase::Checking,"Checking...");
- xSemaphoreTake(mutex,portMAX_DELAY);String list=servers+" ";int32_t bad=rejected;xSemaphoreGive(mutex);int start=0;bool reached=false;
+ xSemaphoreTake(mutex,portMAX_DELAY);String list=servers+" ";int32_t bad=rejected;xSemaphoreGive(mutex);int start=0;bool reached=false,answered=false;
  while(start<int(list.length())){
   int end=list.indexOf(' ',start);String base=list.substring(start,end);start=end+1;if(!base.length())continue;
   std::unique_ptr<WiFiClient> client;HTTPClient http;
   String url=base+"/api/v1/check?board="+otaBoard()+"&code="+String(MM_VERSION_CODE)+"&dev="+deviceId()+"&ver="+MM_BUILD_VERSION+"&ed="+Edition;
   if(!open(http,client,url))continue;int status=http.GET();
   if(status!=200){http.end();continue;}
-  DynamicJsonDocument doc(1536);auto error=deserializeJson(doc,http.getStream());http.end();if(error)continue;
+  answered=true;DynamicJsonDocument doc(1536);auto error=deserializeJson(doc,http.getStream());http.end();if(error)continue;
   reached=true;
   if(pendingReport.length()){Report report{base,pendingReport,pendingDetail,MM_VERSION_CODE};sendReport(report);pendingReport="";}
   // Licensed devices get their license with every answer: the Free image keeps it for the Full one it installs, a Full
@@ -104,13 +108,14 @@ static void checkWorker(void*){
   const esp_partition_t *slot=esp_ota_get_next_update_partition(nullptr);
   // Free -> Full is offered at the same build number too: the edition is what changes, never an older build.
   bool full=String(doc["edition"]|"")=="full",switching=full&&String(Edition)=="free";String signedBoard=String(otaBoard())+(full?"-full":"");
-  String problem=String(doc["board"]|"")!=otaBoard()?"Release for another board":code<MM_VERSION_CODE||(code==MM_VERSION_CODE&&!switching)?"Server offers an older build":code==bad?"Build "+String(code)+" rolled back / ignored":!slot||size==0||size>slot->size?"Release larger than the update slot":!file.startsWith("/fw/")?"Bad download path":!signatureValid(signedBoard,version,code,sha,sig)?"Signature not valid / ignored":"";
+  String problem=String(doc["board"]|"")!=otaBoard()?"Release for another board":code<MM_VERSION_CODE||(code==MM_VERSION_CODE&&!switching)?"Server offers an older build":code==bad&&(!rejectedEdition.length()||rejectedEdition==(full?"full":"free"))?"Build "+String(code)+" rolled back / ignored":!slot||size==0||size>slot->size?"Release larger than the update slot":!file.startsWith("/fw/")?"Bad download path":!signatureValid(signedBoard,version,code,sha,sig)?"Signature not valid / ignored":"";
   xSemaphoreTake(mutex,portMAX_DELAY);state.server=base;state.checkedAt=millis();
   if(problem.length()){state.phase=OtaPhase::Error;state.message=problem;}
-  else{state.phase=OtaPhase::Available;state.version=version;state.code=code;state.size=size;state.done=0;state.notes=doc["notes"]|"";state.message=version+(full?" Full":"")+" available";sha256=sha;signature=sig;path=file;}
+  else{state.phase=OtaPhase::Available;state.version=version;state.code=code;state.size=size;state.done=0;state.notes=doc["notes"]|"";state.message=version+(full?" Full":"")+" available";sha256=sha;signature=sig;path=file;offerEdition=full?"full":"free";}
   publish();xSemaphoreGive(mutex);break;
  }
- if(!reached)setPhase(OtaPhase::Error,"Update server unreachable");
+ // Not reached: an offer found earlier stays (it is still signed and valid); otherwise say what went wrong.
+ if(!reached){if(hadOffer)setPhase(OtaPhase::Available,offerMessage);else setPhase(OtaPhase::Error,answered?"Bad answer from the update server":"Update server unreachable");}
  xSemaphoreTake(mutex,portMAX_DELAY);busy=false;xSemaphoreGive(mutex);networkJobEnd();vTaskDelete(nullptr);
 }
 
@@ -139,7 +144,10 @@ static bool download(const String &url,uint32_t size,const String &expected,Stri
  uint8_t digest[32];mbedtls_sha256_finish(&hash,digest);mbedtls_sha256_free(&hash);
  if(done<size){Update.abort();return false;}
  if(expected!=mm::hexString(digest,32).c_str()){Update.abort();problem="Checksum mismatch / discarded";return false;}
- if(!Update.end()){problem=String("Image rejected: ")+Update.errorString();return false;}
+ // The install state goes in before end() switches the boot slot: a power cut right after it still sees the rollback.
+ xSemaphoreTake(mutex,portMAX_DELAY);String edition=offerEdition;int32_t code=state.code;xSemaphoreGive(mutex);
+ preferences.putString("tryed",edition);preferences.putInt("from",MM_VERSION_CODE);preferences.putInt("try",code);
+ if(!Update.end()){preferences.remove("try");preferences.remove("from");preferences.remove("tryed");problem=String("Image rejected: ")+Update.errorString();return false;}
  return true;
 }
 
@@ -147,9 +155,10 @@ static void installWorker(void*){
  xSemaphoreTake(mutex,portMAX_DELAY);String url=state.server+path,version=state.version,expected=sha256;uint32_t size=state.size;int32_t code=state.code;state.phase=OtaPhase::Downloading;state.done=0;state.message="Downloading "+version;publish();xSemaphoreGive(mutex);
  String problem;bool ok=download(url,size,expected,problem);
  if(ok){
-  preferences.putInt("try",code);preferences.putInt("from",MM_VERSION_CODE);
   setPhase(OtaPhase::Restarting,"Installed "+version+" / restarting");Serial.printf("OTA_INSTALLED version=%s code=%ld\n",version.c_str(),long(code));
-  delay(2500);ESP.restart();
+  // otaLoop() restarts in 2.5 s from the main task, between its own SD writes, after closing the card (the SD is
+  // written by the main task; the network workers only fetch). busy stays set.
+  xSemaphoreTake(mutex,portMAX_DELAY);restartAt=millis()+2500;if(!restartAt)restartAt=1;xSemaphoreGive(mutex);networkJobEnd();vTaskDelete(nullptr);
  }
  Serial.printf("OTA_FAILED %s\n",problem.c_str());setPhase(OtaPhase::Error,problem);
  xSemaphoreTake(mutex,portMAX_DELAY);busy=false;xSemaphoreGive(mutex);networkJobEnd();vTaskDelete(nullptr);
@@ -174,31 +183,40 @@ void otaBegin(){
  if(tried){
   // The bootloader booted the old slot again: the new image crashed before it was marked healthy.
   // "try" stays until otaLoop() marks the new image healthy, so a crash before that is still seen here after the rollback.
-  if(tried==MM_VERSION_CODE){state.installed=true;pendingReport="ok";pendingDetail="installed from "+String(from);}
-  else{state.rolledBack=true;pendingReport="rollback";pendingDetail="build "+String(tried)+" rolled back";state.message="Update rolled back";preferences.putInt("bad",tried);preferences.remove("try");preferences.remove("from");}
+  // Same build number after a Free -> Full switch: the edition tells whether the new image is the one running.
+  String edition=preferences.getString("tryed","");
+  if(tried==MM_VERSION_CODE&&(!edition.length()||edition==Edition)){state.installed=true;pendingReport="ok";pendingDetail="installed from "+String(from);}
+  else{state.rolledBack=true;pendingReport="rollback";pendingDetail="build "+String(tried)+(edition.length()?" "+edition:"")+" rolled back";state.message="Update rolled back";
+   String badEdition=edition.length()?edition:String(Edition);
+   String stored=preferences.getString("bade","");// none: saved by an older build, same count
+   int32_t count=preferences.getInt("bad",0)==tried&&(!stored.length()||stored==badEdition)?preferences.getInt("badn",0)+1:1;preferences.putInt("bad",tried);preferences.putInt("badn",count);preferences.putString("bade",badEdition);
+   preferences.remove("try");preferences.remove("from");preferences.remove("tryed");}
  }
- rejected=preferences.getInt("bad",0);
+ rejected=preferences.getInt("badn",0)>=2?preferences.getInt("bad",0):0;rejectedEdition=preferences.getString("bade","");state.refused=rejected;// offered again after one rollback
  const esp_partition_t *running=esp_ota_get_running_partition();esp_ota_img_states_t image;
  Serial.printf("OTA_BOOT board=%s code=%ld slot=%s state=%d tried=%ld\n",otaBoard(),long(MM_VERSION_CODE),running?running->label:"?",running&&esp_ota_get_state_partition(running,&image)==ESP_OK?int(image):-1,long(tried));
 }
 
 void otaLoop(bool wifiConnected,bool uiReady){
+ {xSemaphoreTake(mutex,portMAX_DELAY);uint32_t at=restartAt;xSemaphoreGive(mutex);if(at&&int32_t(millis()-at)>=0){SD.end();ESP.restart();}}
  if(!healthy&&uiReady&&millis()>=OTA_HEALTHY_AFTER_MS){
   healthy=true;const esp_partition_t *running=esp_ota_get_running_partition();esp_ota_img_states_t image;
   if(running&&esp_ota_get_state_partition(running,&image)==ESP_OK&&image==ESP_OTA_IMG_PENDING_VERIFY){esp_ota_mark_app_valid_cancel_rollback();Serial.println("OTA_VALID image marked healthy");}
-  if(preferences.getInt("try",0)==MM_VERSION_CODE){preferences.remove("try");preferences.remove("from");}
+  if(preferences.getInt("try",0)==MM_VERSION_CODE){preferences.remove("try");preferences.remove("from");preferences.remove("tryed");}
+  if(preferences.getInt("bad",0)==MM_VERSION_CODE&&preferences.getString("bade",Edition)==Edition){preferences.remove("bad");preferences.remove("badn");preferences.remove("bade");}// this build runs: its old rollback count goes
  }
  if(!wifiConnected){connectedAt=0;return;}
  if(!connectedAt)connectedAt=millis();
  bool due=!checkedOnce?uint32_t(millis()-connectedAt)>=OTA_FIRST_CHECK_MS:uint32_t(millis()-lastCheck)>=OTA_CHECK_EVERY_MS;
  // The first check waits for the image to be healthy, so its report can say "ok".
- if(due&&healthy&&state.phase!=OtaPhase::Downloading&&state.phase!=OtaPhase::Restarting)otaCheck();
+ if(due&&healthy)otaCheck();// otaCheck() does nothing while a check or an install runs
 }
 
-void otaCheck(){
- if(WiFi.status()!=WL_CONNECTED){setPhase(OtaPhase::Error,"Wi-Fi not connected");return;}
- if(!otaServerCount()){checkedOnce=true;lastCheck=millis();setPhase(OtaPhase::Error,"No update server configured");return;}
- checkedOnce=true;lastCheck=millis();spawn(checkWorker,"matter-ota-check",8192);
+bool otaCheck(){
+ {xSemaphoreTake(mutex,portMAX_DELAY);bool running=busy;xSemaphoreGive(mutex);if(running)return false;}// a check or an install is running: its phase stays
+ if(WiFi.status()!=WL_CONNECTED){setPhase(OtaPhase::Error,"Wi-Fi not connected");return false;}
+ if(!otaServerCount()){checkedOnce=true;lastCheck=millis();setPhase(OtaPhase::Error,"No update server configured");return false;}
+ checkedOnce=true;lastCheck=millis();return spawn(checkWorker,"matter-ota-check",8192);
 }
 bool otaInstall(){
  xSemaphoreTake(mutex,portMAX_DELAY);bool ready=state.phase==OtaPhase::Available;xSemaphoreGive(mutex);

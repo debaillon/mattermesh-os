@@ -13,5 +13,4 @@ OfflineItalianMetrics offlineItalianMetrics();
 int offlineItalianTranscribe(const int16_t *pcm,size_t samples,std::atomic<bool> &cancel,String &text);
 String offlineItalianMessage();
 // SD path of the MMQIT002 model streamed by the engine.
-const char *offlineItalianModelPath();
 }

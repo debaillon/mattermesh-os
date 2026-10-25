@@ -1,11 +1,9 @@
 #include "clock_limits.h"
-#include "board/device_model.h"
 #include "storm.h"
 #include "weather.h"
 #include "https.h"
 #include "connectivity.h"
 #include "location.h"
-#include "ui/build_info.h"
 #include <Preferences.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -62,7 +60,8 @@ static void fetch(const Request &r){
 static void worker(void *argument){networkJobBegin();auto r=static_cast<Request*>(argument);fetch(*r);delete r;xSemaphoreTake(mutex,portMAX_DELAY);busy=false;publish();xSemaphoreGive(mutex);networkJobEnd();vTaskDelete(nullptr);}
 void stormBegin(){mutex=xSemaphoreCreateMutex();preferences.begin("mmstorm",false);state.alerts=preferences.getBool("alerts",true);pending=state.alerts;}// alerts off: no background check until the STORMS tab asks
 void stormRefresh(){pending=true;}
-bool stormSetAlerts(bool on){xSemaphoreTake(mutex,portMAX_DELAY);state.alerts=on;if(on)pending=true;publish();xSemaphoreGive(mutex);return preferences.putBool("alerts",on)>0;}
+bool stormSetAlerts(bool on){if(!preferences.putBool("alerts",on))return false;// applied only once saved
+ xSemaphoreTake(mutex,portMAX_DELAY);state.alerts=on;if(on)pending=true;publish();xSemaphoreGive(mutex);return true;}
 void stormLoop(){
  static uint32_t lastLoop=0;if(!mutex||millis()-lastLoop<2000)return;lastLoop=millis();
  xSemaphoreTake(mutex,portMAX_DELAY);bool running=busy;xSemaphoreGive(mutex);if(running)return;

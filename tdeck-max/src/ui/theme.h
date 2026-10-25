@@ -49,7 +49,7 @@ constexpr Rect EmojiPopup={Margin,ComposerY-198,W-2*Margin,196};
 constexpr Rect emojiTabRect(int index){return {EmojiPopup.x+4+index*36,EmojiPopup.y+4,34,26};}
 constexpr Rect emojiChoiceRect(int index){return {EmojiPopup.x+4+(index%6)*36,EmojiPopup.y+34+(index/6)*36,34,34};}
 constexpr Rect ChatMenu={W-32,StatusH,32,HeaderH};
-constexpr int SettingsCount=17,SettingsRowH=36,SettingsDeviceFirst=5,SettingsSystemFirst=11;
+constexpr int SettingsCount=18,SettingsRowH=36,SettingsDeviceFirst=5,SettingsSystemFirst=12;
 constexpr int SettingsGpsIndex=4;
 // Settings scroll by whole rows: scroll = first visible row, its group label above it
 // when it opens a group. Rows outside the viewport get a y off screen and are not drawn.
@@ -170,6 +170,10 @@ constexpr int KeyboardSection=12,KeyboardRows=3,KeyboardRowH=40;
 constexpr Rect KeyboardSearch={LoRaInset,Top+6,LoRaContentW,26};
 inline Rect keyboardRowRect(int i){return {Margin,Top+38+i*(KeyboardRowH+2),W-2*Margin,KeyboardRowH};}
 constexpr int KeyboardHelpY=Top+40+KeyboardRows*(KeyboardRowH+2);
+// Settings > Accent key: one row per choice (Off, Right Shift, Left Shift), how it works below.
+constexpr int AccentKeySection=13,AccentRowH=38;
+inline Rect accentRowRect(int i){return {Margin,Top+6+i*(AccentRowH+2),W-2*Margin,AccentRowH};}
+constexpr int AccentInfoY=Top+6+3*(AccentRowH+2)+4;
 constexpr int ContactRows=4,ContactRowH=44,ContactRowY=Top+38,ContactNoticeY=Bottom-46;
 inline Rect contactRowRect(int i){return {LoRaInset,ContactRowY+i*ContactRowH,LoRaContentW,ContactRowH-3};}
 constexpr Rect ContactPrevious={LoRaInset,Bottom-28,40,22},ContactNext={W-LoRaInset-40,Bottom-28,40,22};

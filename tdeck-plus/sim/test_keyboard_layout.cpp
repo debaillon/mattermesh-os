@@ -21,6 +21,9 @@ int main(){
  assert(variant(Lang::German,'s',0,true)=="ß"&&variant(Lang::German,'a',0,true)=="Ä");
  assert(variant(Lang::French,'e',3,false)=="ë"&&variant(Lang::Spanish,'n',0,true)=="Ñ"&&variant(Lang::Portuguese,'a',3,false)=="ã");
  assert(variant(Lang::Italian,'e',0,false)=="è"&&variant(Lang::Italian,'e',1,false)=="é"&&variant(Lang::English,'e',0,false).empty());
+ // Accent bar: the letters one / two taps give, in key order; nothing for English.
+ assert(accentBar(Lang::Italian,1," ")=="à è ì ò ù"&&accentBar(Lang::Italian,0," ")=="à è ì ò ù"&&accentBar(Lang::Italian,2," ")=="é");
+ assert(accentBar(Lang::Russian,1," ")=="ж б х ё"&&accentBar(Lang::Russian,2," ")=="э ю ъ"&&accentBar(Lang::English,1," ").empty()&&accentBar(Lang::German,5," ").empty());
  // Enabled languages: Alt + Space order, a mask never ends up empty.
  uint32_t mask=(1u<<int(Lang::Italian))|(1u<<int(Lang::Russian))|(1u<<int(Lang::Ukrainian));
  assert(next(mask,Lang::Italian)==Lang::Russian&&next(mask,Lang::Russian)==Lang::Ukrainian&&next(mask,Lang::Ukrainian)==Lang::Italian);
@@ -35,5 +38,5 @@ int main(){
  uint32_t seen=0;for(int i=0;i<LangCount;i++){assert(std::string(info(Order[i]).name)==names[i]);seen|=1u<<int(Order[i]);}assert(seen==(1u<<LangCount)-1);
  uint32_t de_en_it=(1u<<int(Lang::German))|(1u<<int(Lang::English))|(1u<<int(Lang::Italian));
  assert(next(de_en_it,Lang::German)==Lang::English&&next(de_en_it,Lang::English)==Lang::Italian&&next(de_en_it,Lang::Italian)==Lang::German);
- std::cout<<"PASS: keyboard layouts (Russian/Ukrainian ЙЦУКЕН, Latin), accent variants and cycling, upper case, enabled-language cycle, search\n";
+ std::cout<<"PASS: keyboard layouts (Russian/Ukrainian ЙЦУКЕН, Latin), accent variants and cycling, accent bar, upper case, enabled-language cycle, search\n";
 }

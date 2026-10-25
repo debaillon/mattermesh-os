@@ -2,6 +2,8 @@
 #include "model.h"
 #include "artwork.h"
 namespace mm {
+// Text of the accent bar, the Keyboard languages how-to line and accent help (pure, tested in sim/test_keyboard_pages.cpp).
+std::string accentBarText(const State &s);std::string keyboardHowto(const State &s);std::string keyboardHelp(const State &s,int lang);std::string upperAscii(std::string text);
 struct MessageHit {Rect area,sender;Message message;int index;std::vector<Rect> links;};// links: the underlined link, one rect per line
 class Renderer {
  Adafruit_GFX &g;Components c;
