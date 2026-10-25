@@ -80,6 +80,10 @@
 #define BOARD_I2S_BCLK 7
 #define BOARD_I2S_DOUT 8
 #define BOARD_I2S_LRC  9
+// PCM5102A power enable (Fennek's PIN_DAC_EN): toggled HIGH only while something is actually playing, LOW
+// otherwise - not just a cosmetic power-saving step, confirmed on hardware to matter for audio actually
+// coming out at all, not merely for saving power while idle.
+#define BOARD_DAC_EN 41
 
 // Misc
 #define BOARD_BOOT_PIN  0

@@ -32,9 +32,11 @@ int toPlayerVolume(int percent){return (std::max(0,std::min(100,percent))*21+50)
 void handle(const MusicMsg &m){
  switch(m.cmd){
   case MusicCmd::Play:{
+   digitalWrite(BOARD_DAC_EN,HIGH); // power the DAC before feeding it anything, not just for its own sake
    device::spiLock();bool ok=s_audio.connecttoFS(SD,m.path);device::spiUnlock();
    activeKind=m.kind;
    if(!ok){
+    digitalWrite(BOARD_DAC_EN,LOW);
     if(m.kind==EngineKind::Music){xSemaphoreTake(stateMutex,portMAX_DELAY);state.message=String("Could not open ")+(strrchr(m.path,'/')?strrchr(m.path,'/')+1:m.path);state.playing=false;state.revision++;xSemaphoreGive(stateMutex);}
     else toneBusy_=false;
     break;
@@ -58,6 +60,7 @@ void handle(const MusicMsg &m){
    break;}
   case MusicCmd::Stop:
    device::spiLock();s_audio.stopSong();device::spiUnlock();
+   digitalWrite(BOARD_DAC_EN,LOW);
    if(activeKind==EngineKind::Music){xSemaphoreTake(stateMutex,portMAX_DELAY);state.playing=state.paused=false;state.revision++;xSemaphoreGive(stateMutex);}
    else toneBusy_=false;
    break;
@@ -75,7 +78,7 @@ void musicTask(void*){
   device::spiLock();s_audio.loop();device::spiUnlock();
   if(activeKind==EngineKind::Music){uint32_t now=millis();if(uint32_t(now-lastTick)>=1000){uint32_t add=(now-lastTick)/1000;lastTick=now;xSemaphoreTake(stateMutex,portMAX_DELAY);state.elapsedSec+=add;state.revision++;xSemaphoreGive(stateMutex);}}
   if(s_eof){
-   s_eof=false;
+   s_eof=false;digitalWrite(BOARD_DAC_EN,LOW);
    if(activeKind==EngineKind::Music){xSemaphoreTake(stateMutex,portMAX_DELAY);state.playing=state.paused=false;state.message="Playback finished";state.revision++;xSemaphoreGive(stateMutex);}
    else toneBusy_=false;
   }
@@ -101,6 +104,7 @@ std::vector<String> musicList(){
 }
 void musicBegin(bool sdReady){
  prefs.begin("mmmusic",false);state.volume=std::max(0,std::min(100,prefs.getInt("volume",70)));state.available=sdReady;
+ pinMode(BOARD_DAC_EN,OUTPUT);digitalWrite(BOARD_DAC_EN,LOW); // only powered while something is actually playing
  s_audio.setPinout(BOARD_I2S_BCLK,BOARD_I2S_LRC,BOARD_I2S_DOUT);
  s_audio.setVolume(toPlayerVolume(state.volume));
  s_audio.setBufsize(-1,256*1024); // PSRAM read-ahead: rides out an e-paper refresh holding the SPI bus

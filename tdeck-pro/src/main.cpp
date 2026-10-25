@@ -1671,6 +1671,7 @@ void handle(const String &s) {
  if(s=="music status"){auto m=device::musicState();Serial.printf("MUSIC_STATUS available=%d playing=%d paused=%d track=%s elapsed=%lu volume=%d message=%s\n",m.available,m.playing,m.paused,m.track.c_str(),m.elapsedSec,m.volume,m.message.c_str());return;}
  if(s.startsWith("music play ")){bool started=device::musicPlay(s.substring(11));Serial.printf("MUSIC_PLAY started=%d\n",started);return;}
  if(s=="music stop"){device::musicStop();Serial.println("MUSIC_STOP");return;}
+ if(s.startsWith("music volume ")){device::musicVolume(s.substring(13).toInt());Serial.printf("MUSIC_VOLUME value=%d\n",device::musicState().volume);return;}
  if(s=="audio status"){auto a=device::audioState();Serial.printf("AUDIO_STATUS ready=%d notify=%d volume=%d busy=%d recording=%d samples=%lu level=%d configured=%d peak=%d\n",a.ready,a.notifications,a.volume,a.busy,a.recording,a.samples,a.level,a.dictationConfigured,a.peak);return;}
  if(s=="audio test"&&!deviceLocked){device::audioNotify(true);render();return;}
  if(s=="audio mic-test"&&!deviceLocked){device::audioProbeRecord();render();return;}
