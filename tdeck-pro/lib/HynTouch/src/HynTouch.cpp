@@ -268,22 +268,38 @@ uint8_t hyn_touch_get_point(int16_t *x_array, int16_t *y_array, uint8_t get_poin
         return 0;
     }
 
-    if (!g_touch.press_flag) {
+    // T-Deck Pro's CST328 does not appear to pulse the IRQ line on finger-up, only on finger-down/move (unlike
+    // the T-Deck Max's CST226SE): waiting purely for press_flag leaves the last touch-down latched as "still
+    // down" forever once the finger actually lifts. While latched down, re-poll on a short timer regardless of
+    // the IRQ, so a real release (chip reports 0 fingers) still gets picked up.
+    static uint32_t last_forced_poll = 0;
+    uint32_t forced_poll_now = millis();
+    bool force_release_check = g_touch.contact.down && uint32_t(forced_poll_now - last_forced_poll) >= 60;
+    if (!g_touch.press_flag && !force_release_check) {
         return 0;
     }
+    if (force_release_check) last_forced_poll = forced_poll_now;
     g_touch.press_flag = false;
 
     uint8_t point_count = 0;
     g_touch.data->hyn_irq_flg = 1;
     if (g_touch.data->work_mode < DIFF_MODE) {
         const int ret = g_touch.data->hyn_fuc_used->tp_report();
-        point_count = (g_touch.data->rp_buf.report_need & REPORT_POS) ? g_touch.data->rp_buf.rep_num : 0;
+        bool freshPosition = g_touch.data->rp_buf.report_need & REPORT_POS;
+        point_count = freshPosition ? g_touch.data->rp_buf.rep_num : 0;
         apply_axis_transform(point_count);
         if (ret == 0) {
-            g_touch.contact.report(g_touch.data->rp_buf.report_need & REPORT_POS, point_count,
+            g_touch.contact.report(freshPosition, point_count,
                 point_count ? g_touch.data->rp_buf.pos_info[0].pos_x : 0,
                 point_count ? g_touch.data->rp_buf.pos_info[0].pos_y : 0);
         }
+        // Still touching, but the chip reported nothing fresh (ret != 0, or it simply has no new frame): the
+        // actual release never comes through as its own "0 fingers" frame on this chip, so declare the touch
+        // over once nothing fresh has arrived for a while. 200 ms is comfortably longer than the ~60 ms forced
+        // repoll above, so a real held touch (which keeps refreshing) never gets cut off by this.
+        static uint32_t last_fresh_position_ms = 0;
+        if (ret == 0 && freshPosition) last_fresh_position_ms = forced_poll_now;
+        else if (g_touch.contact.down && uint32_t(forced_poll_now - last_fresh_position_ms) >= 200) g_touch.contact.reset();
 
         for (uint8_t i = 0; i < point_count && i < get_point; ++i) {
             x_array[i] = g_touch.data->rp_buf.pos_info[i].pos_x;
