@@ -6,13 +6,14 @@
 #include "mesh/message_limits.h"
 namespace mm {
 enum class WeatherPhaseView {Closed,WifiOff,Connecting,NoNetwork,WaitingClock,Locating,Fetching,Ready,Error};
-enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Antenna,Storage,QuickSettings,Cli,ContactPicker,Support,Keyboard,AccentKey,Music,Books };
+enum class Page { Home,Launcher,Messages,Chat,NewChat,Settings,Controls,Mesh,Radio,GPS,Maps,Weather,Info,Files,Wifi,Bluetooth,Terminal,DateTime,Updates,Battery,Power,Audio,Wallpaper,Antenna,Storage,QuickSettings,Cli,ContactPicker,Support,Keyboard,AccentKey,Music,Books,Travel };
 struct Conversation { std::string name,scope,preview,time="--:--",sender,age="--";bool direct=false;int id=0,unread=0,activity=0; };
 struct Message {std::string sender,time,body,meta;bool mine;std::string path,heard,scope;int hops=-1;uint32_t token=0;int repeaters=-1;Message(std::string s="",std::string t="",std::string b="",std::string m="",bool own=false):sender(std::move(s)),time(std::move(t)),body(std::move(b)),meta(std::move(m)),mine(own){} };
 struct ContactRow {std::string name,detail;};
 struct Node {std::string name,key;int type=0;bool live=false;uint32_t age=0;float rssi=0,snr=0;int hops=-1;std::string distance;}; // distance: "2.4 km NE" when both positions are known
 struct MapPin {int x=0,y=0;bool repeater=false;std::string name;int step=-1;}; // step: route stop (0 = sender, 1.. = repeaters)
 struct MapSegment {int x0=0,y0=0,x1=0,y1=0;bool dashed=false;};
+struct TravelHit {uint32_t passageId=0;std::string title,detail;}; // detail: a score or a distance, already formatted for display
 struct State {
  const uint8_t *mapBits=nullptr;int mapSelfX=-1,mapSelfY=-1,mapScalePx=0;bool mapFollow=false,mapFull=false,messageRouteView=false;std::string mapStatus,mapScaleLabel;std::vector<MapPin> mapPins;std::vector<MapSegment> mapRoute;std::vector<std::string> mapLegend;
  bool historyLoading=false;std::string historyError;
@@ -82,6 +83,11 @@ bool batteryEstimated=false,batteryCharging=false,batteryFull=false;
  std::vector<std::string> files;
  std::vector<std::string> musicTracks;int musicFocus=0;bool musicPlaying=false,musicPaused=false;std::string musicTrack,musicMessage;uint32_t musicElapsedSec=0;int musicVolume=70;
  std::vector<std::string> epubBooks;int epubFocus=0;bool epubOpen=false;std::string epubTitle,epubMessage;std::vector<std::string> epubPageLines;
+ // Travel app (27): a knowledge pack's query line, results list and a selected passage - see pack_sd.h.
+ // view: 0 query (type a question / NEAR ME), 1 results list, 2 one passage read full-screen.
+ int travelView=0,travelFocus=0,travelOffset=0,travelScroll=0;
+ std::string travelInput,travelPackName,travelStatus;bool travelPackOpen=false;
+ std::vector<TravelHit> travelHits;std::string travelPassageTitle,travelPassageText,travelAttribution;
  std::vector<Conversation> conversations;std::vector<Message> messages;
 };
 }

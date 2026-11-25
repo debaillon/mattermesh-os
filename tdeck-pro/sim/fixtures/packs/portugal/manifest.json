@@ -1,0 +1,56 @@
+{
+ "format_version": 1,
+ "id": "portugal",
+ "name": "Portugal",
+ "language": "en",
+ "built": "2026-01-01",
+ "examples": [
+  "where to eat in Porto"
+ ],
+ "bbox": [
+  38.6975,
+  -9.3906,
+  41.15,
+  -8.607
+ ],
+ "bm25": {
+  "k1": 1.2,
+  "b": 0.75,
+  "title_weight": 2
+ },
+ "counts": {
+  "passages": 11,
+  "terms": 114,
+  "geo": 7
+ },
+ "files": {
+  "passages.bin": {
+   "size": 1426,
+   "sha256": "5db20f70da47564d73e64423bf2d03558cb68adaad63fe6fdc832be9389451e0"
+  },
+  "index.bin": {
+   "size": 263880,
+   "sha256": "4fbd87e39e8490ad42dd953df08cb95585eaf6a3e66bb1ce5015eec92c95c6c7"
+  },
+  "geo.bin": {
+   "size": 100,
+   "sha256": "7c7f16677cb9f9c207846be253b582e21d88a3f2c7b48b9fdf556fa26fa92460"
+  },
+  "tokenizer.json": {
+   "size": 9284,
+   "sha256": "cee60d253c96fccdb25d236463ee2708a894f9a37fe682a20df2d875b322d186"
+  },
+  "aliases.json": {
+   "size": 21,
+   "sha256": "6427e616a86e2fea92d105787f38a4be22a9e2b20ec556036d3266ce57be68cf"
+  },
+  "ATTRIBUTION.txt": {
+   "size": 5,
+   "sha256": "f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2"
+  }
+ },
+ "sources": [
+  "test"
+ ],
+ "attribution": "test"
+}

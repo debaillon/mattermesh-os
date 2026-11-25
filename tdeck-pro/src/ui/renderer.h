@@ -29,6 +29,7 @@ public:
  void cliApp(const State &s);
  int cliLineAt(const State &s,int y); // raw CLI line under y, -1 if none
  int cliMaxScroll(const State &s);
+ void travelApp(const State &s);
  const std::vector<std::pair<Rect,int>> &messageBounds()const{return bubbleHits;}
  bool senderHit(int x,int y)const{for(auto &r:senderHits)if(r.first.contains(x,y))return true;return false;}
  std::vector<MessageHit> snapshotMessages(const State &s)const{std::vector<MessageHit> out;for(auto &hit:bubbleHits){if(hit.second<0||hit.second>=int(s.messages.size()))continue;Rect sender={0,0,0,0};for(auto &name:senderHits)if(name.second==hit.second){sender=name.first;break;}out.push_back({hit.first,sender,s.messages[hit.second],hit.second});}return out;}

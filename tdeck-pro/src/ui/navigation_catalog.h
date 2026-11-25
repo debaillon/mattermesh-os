@@ -10,7 +10,7 @@ constexpr const char *DonateUrl="https://ko-fi.com/mattermeshos";
 constexpr const char *UnlockUrl="https://ko-fi.com/s/1f0b36fd8b";
 constexpr bool FreeBuild=true;
 // Free image: the Extra apps are not compiled in, the App screen lists the OS apps.
-inline constexpr AppItem Applications[]={{"Maps",PackIcon::Map,9},{"Weather",PackIcon::Weather,10},{"Files",PackIcon::Files,7},{"Music",PackIcon::Music,MusicSection},{"Books",PackIcon::Book,BooksSection},{"CLI",PackIcon::Keyboard,30}};
+inline constexpr AppItem Applications[]={{"Maps",PackIcon::Map,9},{"Weather",PackIcon::Weather,10},{"Travel",PackIcon::List,27},{"Files",PackIcon::Files,7},{"Music",PackIcon::Music,MusicSection},{"Books",PackIcon::Book,BooksSection},{"CLI",PackIcon::Keyboard,30}};
 constexpr int ApplicationCount=sizeof(Applications)/sizeof(Applications[0]);
 // No Date / time entry: NTP (Wi-Fi) and GPS already set the clock automatically (see time_sync.cpp /
 // timezone_sync.cpp), and a manual editor is still reachable over serial ("time set YYYY-MM-DD HH:MM").

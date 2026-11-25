@@ -7,6 +7,7 @@
 #include "navigation_catalog.h"
 #include "services/channel_qr.h"
 #include "cli_layout.h"
+#include "travel_layout.h"
 #include "mesh/rx_log.h"
 #include "lock_wallpapers.h"
 #include "lock_clock_glyphs.h"
@@ -722,7 +723,9 @@ void Renderer::section(const State &s){
 }
 #include "quick_settings_renderer.inc"
 #include "cli_renderer.inc"
+#include "travel_renderer.inc"
 void Renderer::draw(const State &s){switch(s.page){
  case Page::Cli:cliApp(s);break;
+ case Page::Travel:travelApp(s);break;
  case Page::Home:home(s);break;case Page::Launcher:launcher(s);break;case Page::Messages:messages(s);break;case Page::Chat:chat(s);break;case Page::NewChat:form(s);break;case Page::ContactPicker:contactPicker(s);break;case Page::Settings:settings(s);break;case Page::QuickSettings:quickSettings(s);break;default:section(s);}if(s.channelOptions)channelOptions(s);}
 }
